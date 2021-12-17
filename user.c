@@ -1,0 +1,25 @@
+/*
+ * I processi utente si occupano di creare e inviare transazioni ai processi nodo.
+ *
+ * Ogni processo utente inizia con SO_BUDGET_INIT, e dovrà:
+ *     - Calcolare il bilancio, facendo la somma algebrica delle entrate e delle uscite che abbiamo fatto, ancor prima di
+ *       essere registrate nel libro mastro
+ *           - Se questo bilancio è >= 2, il processo farà le seguenti operazioni:
+ *                - Sceglie un processo utente a cui inviare il denaro
+ *                - Sceglie un nodo a cui inviare la transazione da processare
+ *                - Sceglie un valore intero compreso tra 2 e il suo budget, suddiviso in questa maniera
+ *                     * Il reward, una percentuale di SO_REWARD, arrotondato ad un minimo di 1
+ *                     * L'importo della transazione, quindi il valore scelto prima - reward
+ *           - Se il bilancio è minore di 2, allora il processo non invia alcuna transazione
+ *     - Invia al nodo scelto la transazione, e attende un intervallo di tempo tra SO_MIN_TRANS_GEN_NSEC e SO_MAX_TRANS_GEN_NSEC
+ *
+ * Dovrà anche gestire un segnale per generare una transazione (segnale da scegliere)
+ *
+ * Funzione transaction inviata da utente a nodo, deve avere:
+ *      timestamp
+ *      sender
+ *      receiver
+ *      quantità
+ *      reward
+ *  e deve essere memorizzata con questi parametri sul libro mastro.
+ */
