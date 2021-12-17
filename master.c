@@ -1,7 +1,11 @@
 #define _GNU_SOURCE
 
 #include "config.h"
+#include "user.c"
+#include "node.c"
+#include "structure.h"
 #include <unistd.h>
+#include <stdlib.h>
 
 /*
  * master: crea SO_USERS_NUM processi utente, gestisce simulazione
@@ -13,10 +17,35 @@
  * TODO: fare in modo che si possano inviare segnali al master per fare roba™️
  */
 
-
-
-struct Config cfg;
-
 int main(int argc, char *argv[]) {
+    Transazione blockchain[SO_REGISTRY_SIZE][SO_BLOCK_SIZE];
+    unsigned int i;
 
+    for (i = 0; i < SO_NODES_NUM; i++) {
+        switch (fork()) {
+            case -1:
+                exit(EXIT_FAILURE);
+            case 0:
+                startNode();
+                break;
+            default:
+                break;
+                /* TODO: immagazzinare pid */
+        }
+    }
+
+    for (i = 0; i < SO_USERS_NUM; i++) {
+        switch (fork()) {
+            case -1:
+                exit(EXIT_FAILURE);
+            case 0:
+                startUser();
+                break;
+            default:
+                break;
+                /* TODO: immagazzinare pid */
+        }
+    }
+
+    /* TODO: check per i segnali*/
 }

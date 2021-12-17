@@ -23,3 +23,32 @@
  *      reward
  *  e deve essere memorizzata con questi parametri sul libro mastro.
  */
+
+#define _GNU_SOURCE
+
+#include "config.h"
+#include <time.h>
+
+long calcBilancio(budget) {
+    long bilancio;
+    int i, j;
+    for (i = 0; i < SO_REGISTRY_SIZE; i++){
+        for(j = 0; j < SO_BLOCK_SIZE; j++){
+            bilancio += blockchain[i][j].quantity;
+        }
+    }
+    return bilancio;
+}
+
+void startUser() {
+    struct timespec my_time;
+    long bilancio = calcBilancio(SO_BUDGET_INIT);
+    if (bilancio >= 2) {
+        /*TODO: fare roba del figlio dopo aver fatto la mem condivisa*/
+        my_time.tv_nsec = rand() % (SO_MAX_TRANS_GEN_NSEC + 1 - SO_MIN_TRANS_GEN_NSEC) + SO_MIN_TRANS_GEN_NSEC;
+        nanosleep(&my_time, NULL);
+    } else {
+        my_time.tv_nsec = rand() % (SO_MAX_TRANS_GEN_NSEC + 1 - SO_MIN_TRANS_GEN_NSEC) + SO_MIN_TRANS_GEN_NSEC;
+        nanosleep(&my_time, NULL);
+    }
+}

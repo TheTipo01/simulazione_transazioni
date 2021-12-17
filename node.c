@@ -20,3 +20,10 @@
  *
  * Quando trans. elaborata, scrive il nuovo blocco nel libro mastro e pulisce TP
  */
+#define _GNU_SOURCE
+
+#include "config.h"
+
+void startNode() {
+
+}

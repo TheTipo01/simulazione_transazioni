@@ -1,4 +1,8 @@
-struct Transazione {
+#define _GNU_SOURCE
+#ifndef STRUCTURE_H
+#define STRUCTURE_H
+
+typedef struct Transazione {
     /* Timestamp della transazione con risoluzione dei nanosecondi
         (vedere funzione clock_gettime()) */
     unsigned int timestamp;
@@ -14,4 +18,6 @@ struct Transazione {
 
     /* Denaro pagato dal sender al nodo che processa la transazione */
     unsigned int reward;
-};
+} Transazione;
+
+#endif
