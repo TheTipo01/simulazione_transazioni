@@ -24,10 +24,10 @@
  *  e deve essere memorizzata con questi parametri sul libro mastro.
  */
 
-#define _GNU_SOURCE
-
-#include "config.h"
+#include "config.c"
+#include "structure.h"
 #include <time.h>
+#include <unistd.h>
 
 long calcBilancio(budget) {
     long bilancio;
@@ -40,15 +40,22 @@ long calcBilancio(budget) {
     return bilancio;
 }
 
-void startUser() {
+void startUser(Config cfg) {
     struct timespec my_time;
-    long bilancio = calcBilancio(SO_BUDGET_INIT);
+
+    /* TEMP */
+    int * nodePIDs = malloc(cfg.SO_NODES_NUM*sizeof(int));
+    int * usersPIDs = malloc(cfg.SO_USERS_NUM*sizeof()int);
+    /* TEMP */
+
+    long bilancio = calcBilancio(cfg.SO_BUDGET_INIT);
     if (bilancio >= 2) {
-        /*TODO: fare roba del figlio dopo aver fatto la mem condivisa*/
-        my_time.tv_nsec = rand() % (SO_MAX_TRANS_GEN_NSEC + 1 - SO_MIN_TRANS_GEN_NSEC) + SO_MIN_TRANS_GEN_NSEC;
+        pid_t receiverPID = usersPIDs[rand() % cfg.SO_USERS_NUM];
+
+        my_time.tv_nsec = rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
         nanosleep(&my_time, NULL);
     } else {
-        my_time.tv_nsec = rand() % (SO_MAX_TRANS_GEN_NSEC + 1 - SO_MIN_TRANS_GEN_NSEC) + SO_MIN_TRANS_GEN_NSEC;
+        my_time.tv_nsec = rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
         nanosleep(&my_time, NULL);
     }
 }

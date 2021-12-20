@@ -20,10 +20,10 @@
  *
  * Quando trans. elaborata, scrive il nuovo blocco nel libro mastro e pulisce TP
  */
-#define _GNU_SOURCE
 
-#include "config.h"
+#include "config.c"
+#include "structure.h"
 
-void startNode() {
-
+void startNode(Config cfg) {
+    Transazione transactionPool[cfg.SO_TP_SIZE];
 }

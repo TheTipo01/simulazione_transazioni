@@ -1,11 +1,12 @@
 #define _GNU_SOURCE
 
-#include "config.h"
+#include "config.c"
 #include "user.c"
 #include "node.c"
 #include "structure.h"
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 /*
  * master: crea SO_USERS_NUM processi utente, gestisce simulazione
@@ -18,15 +19,18 @@
  */
 
 int main(int argc, char *argv[]) {
+    Config cfg = newConfig();
     Transazione blockchain[SO_REGISTRY_SIZE][SO_BLOCK_SIZE];
+    int * nodePIDs = malloc(cfg.SO_NODES_NUM*sizeof(int));
+    int * usersPIDs = malloc(cfg.SO_USERS_NUM*sizeof(int));
     unsigned int i;
 
-    for (i = 0; i < SO_NODES_NUM; i++) {
+    for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         switch (fork()) {
             case -1:
                 exit(EXIT_FAILURE);
             case 0:
-                startNode();
+                startNode(cfg);
                 break;
             default:
                 break;
@@ -34,18 +38,19 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    for (i = 0; i < SO_USERS_NUM; i++) {
+    for (i = 0; i < cfg.SO_USERS_NUM; i++) {
         switch (fork()) {
             case -1:
                 exit(EXIT_FAILURE);
             case 0:
-                startUser();
+                startUser(cfg);
                 break;
             default:
                 break;
                 /* TODO: immagazzinare pid */
         }
     }
+
 
     /* TODO: check per i segnali*/
 }
