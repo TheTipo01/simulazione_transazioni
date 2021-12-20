@@ -23,7 +23,10 @@
 
 #include "config.c"
 #include "structure.h"
+#include "lib/libsem.h"
 
-void startNode(Config cfg) {
+#include <signal.h>
+
+void startNode(sigset_t wset, Config cfg, int shID, int * nodePIDs, int * usersPIDs) {
     Transazione transactionPool[cfg.SO_TP_SIZE];
 }

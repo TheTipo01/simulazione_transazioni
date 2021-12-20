@@ -26,29 +26,33 @@
 
 #include "config.c"
 #include "structure.h"
+#include "lib/libsem.h"
+
 #include <time.h>
 #include <unistd.h>
+#include <signal.h>
 
 long calcBilancio(budget) {
     long bilancio;
     int i, j;
     for (i = 0; i < SO_REGISTRY_SIZE; i++){
         for(j = 0; j < SO_BLOCK_SIZE; j++){
-            bilancio += blockchain[i][j].quantity;
+            /* bilancio += blockchain[i][j].quantity; */
         }
     }
     return bilancio;
 }
 
-void startUser(Config cfg) {
+void startUser(sigset_t wset, Config cfg, int shID, int * nodePIDs, int * usersPIDs) {
     struct timespec my_time;
+    int sig;
+    long bilancio;
 
-    /* TEMP */
-    int * nodePIDs = malloc(cfg.SO_NODES_NUM*sizeof(int));
-    int * usersPIDs = malloc(cfg.SO_USERS_NUM*sizeof()int);
-    /* TEMP */
+    sigwait(&wset, &sig);
+    printf("User avviato.");
 
-    long bilancio = calcBilancio(cfg.SO_BUDGET_INIT);
+
+    bilancio = calcBilancio(cfg.SO_BUDGET_INIT);
     if (bilancio >= 2) {
         pid_t receiverPID = usersPIDs[rand() % cfg.SO_USERS_NUM];
 
