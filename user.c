@@ -32,7 +32,7 @@
 #include <unistd.h>
 #include <signal.h>
 
-long calcBilancio(budget) {
+long calcBilancio(long budget) {
     long bilancio;
     int i, j;
 
@@ -47,23 +47,37 @@ long calcBilancio(budget) {
 }
 
 void startUser(sigset_t *wset, Config cfg, int shID, int *nodePIDs, int *usersPIDs) {
+    Transazione t;
     struct timespec my_time;
     int sig;
     long bilancio;
 
-    /*  */
+    /* Buffer dell'output sul terminale impostato ad asincrono in modo da ricevere comunicazioni dai child */
     setvbuf(stdout, NULL, _IONBF, 0);
 
+    /* Child aspettano un segnale dal parent: possono iniziare la loro funzione solo dopo che vengono generati
+     * tutti gli altri child */
     sigwait(wset, &sig);
 
-    bilancio = calcBilancio(cfg.SO_BUDGET_INIT);
-    if (bilancio >= 2) {
-        pid_t receiverPID = usersPIDs[rand() % cfg.SO_USERS_NUM];
+    bilancio = cfg.SO_BUDGET_INIT;
 
-        my_time.tv_nsec =
-                rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
-        nanosleep(&my_time, NULL);
-    } else {
+    while (1) {
+        while (bilancio >= 2) {
+            pid_t receiverPID = usersPIDs[rand() % cfg.SO_USERS_NUM];
+            pid_t targetNodePID = nodePIDs[rand() % cfg.SO_NODES_NUM];
+
+            t.sender = getpid();
+            t.receiver = receiverPID;
+            t.timestamp = time(NULL);
+            t.quantity = rand() %
+
+                         my_time.tv_nsec =
+                    rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
+            nanosleep(&my_time, NULL);
+        }
+        /* no more moners :( */
+        /* TODO: aspettare finchè bilancio positivo */
+
         my_time.tv_nsec =
                 rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
         nanosleep(&my_time, NULL);

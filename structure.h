@@ -5,7 +5,7 @@
 typedef struct Transazione {
     /* Timestamp della transazione con risoluzione dei nanosecondi
         (vedere funzione clock_gettime()) */
-    unsigned int timestamp;
+    unsigned long timestamp;
 
     /* L'utente implicito che ha generato la transazione */
     int sender;

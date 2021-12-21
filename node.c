@@ -27,6 +27,18 @@
 
 #include <signal.h>
 
-void startNode(sigset_t wset, Config cfg, int shID, int *nodePIDs, int *usersPIDs) {
+#define BLOCK_SENDER -1
+
+void startNode(sigset_t *wset, Config cfg, int shID, int *nodePIDs, int *usersPIDs) {
     Transazione transactionPool[cfg.SO_TP_SIZE];
+    int sig;
+
+    /* Buffer dell'output sul terminale impostato ad asincrono in modo da ricevere comunicazioni dai child */
+    setvbuf(stdout, NULL, _IONBF, 0);
+
+    /* Child aspettano un segnale dal parent: possono iniziare la loro funzione solo dopo che vengono generati
+     * tutti gli altri child */
+    sigwait(wset, &sig);
+
+
 }

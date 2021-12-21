@@ -2,7 +2,7 @@
 
 #include "config.c"
 #include "user.c"
-/*#include "node.c"*/
+#include "node.c"
 #include "structure.h"
 #include "lib/libsem.c"
 
@@ -55,7 +55,6 @@ int main(int argc, char *argv[]) {
     /* Mascheriamo i segnali che usiamo */
     sigprocmask(SIG_BLOCK, &wset, NULL);
 
-    /*
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         switch (currentPid = fork()) {
             case -1:
@@ -64,10 +63,9 @@ int main(int argc, char *argv[]) {
                 startNode(&wset, cfg, shID, nodePIDs, usersPIDs);
                 return 0;
             default:
-                nodePIDs[i]=currentPid;
+                nodePIDs[i] = currentPid;
         }
     }
-    */
 
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
         switch (currentPid = fork()) {
