@@ -16,7 +16,6 @@
 #include <sys/wait.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#include <time.h>
 #include <sys/stat.h>
 
 /*
@@ -31,22 +30,30 @@
 
 int main(int argc, char *argv[]) {
     Config cfg = newConfig();
-    int * nodePIDs = malloc(cfg.SO_NODES_NUM*sizeof(int));
-    int * usersPIDs = malloc(cfg.SO_USERS_NUM*sizeof(int));
+    int *nodePIDs = malloc(cfg.SO_NODES_NUM * sizeof(int));
+    int *usersPIDs = malloc(cfg.SO_USERS_NUM * sizeof(int));
     unsigned int i;
     int currentPid;
     int shID;
+    int status;
     sigset_t wset;
 
+    setvbuf(stdout, NULL, _IONBF, 0);
+
     /* Allocazione memoria per il libro mastro */
-    shID = shmget(IPC_PRIVATE, (SO_REGISTRY_SIZE * sizeof(Transazione)) * (SO_BLOCK_SIZE * sizeof(Transazione)), S_IRUSR | S_IWUSR);
+    shID = shmget(IPC_PRIVATE, (SO_REGISTRY_SIZE * sizeof(Transazione)) * (SO_BLOCK_SIZE * sizeof(Transazione)),
+                  S_IRUSR | S_IWUSR);
     if (shID == -1) {
         fprintf(stderr, "%s: %d. Errore in semget #%03d: %s\n", __FILE__, __LINE__, errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
 
+    /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
-    sigaddset(&wset, SIGALRM);
+    sigaddset(&wset, SIGUSR1);
+
+    /* Mascheriamo i segnali che usiamo */
+    sigprocmask(SIG_BLOCK, &wset, NULL);
 
     /*
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
@@ -54,8 +61,8 @@ int main(int argc, char *argv[]) {
             case -1:
                 exit(EXIT_FAILURE);
             case 0:
-                startNode(wset, cfg, shID, nodePIDs, usersPIDs);
-                break;
+                startNode(&wset, cfg, shID, nodePIDs, usersPIDs);
+                return 0;
             default:
                 nodePIDs[i]=currentPid;
         }
@@ -67,15 +74,19 @@ int main(int argc, char *argv[]) {
             case -1:
                 exit(EXIT_FAILURE);
             case 0:
-                startUser(wset, cfg, shID, nodePIDs, usersPIDs);
-                break;
+                startUser(&wset, cfg, shID, nodePIDs, usersPIDs);
+                exit(0);
             default:
-                usersPIDs[i]=currentPid;
+                usersPIDs[i] = currentPid;
         }
     }
 
-    printf("\nFinito!");
-    kill(0, SIGALRM);
+    fprintf(stdout, "\nFinito!");
+    kill(0, SIGUSR1);
+    /* Aspettiamo che i processi finiscano */
+    waitpid(0, &status, 0);
 
     /* TODO: check per i segnali*/
+
+    return 0;
 }

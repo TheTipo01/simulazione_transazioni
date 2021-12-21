@@ -27,6 +27,6 @@
 
 #include <signal.h>
 
-void startNode(sigset_t wset, Config cfg, int shID, int * nodePIDs, int * usersPIDs) {
+void startNode(sigset_t wset, Config cfg, int shID, int *nodePIDs, int *usersPIDs) {
     Transazione transactionPool[cfg.SO_TP_SIZE];
 }

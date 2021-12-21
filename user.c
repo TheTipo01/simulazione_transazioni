@@ -35,31 +35,37 @@
 long calcBilancio(budget) {
     long bilancio;
     int i, j;
-    for (i = 0; i < SO_REGISTRY_SIZE; i++){
-        for(j = 0; j < SO_BLOCK_SIZE; j++){
+
+    bilancio = 0;
+
+    for (i = 0; i < SO_REGISTRY_SIZE; i++) {
+        for (j = 0; j < SO_BLOCK_SIZE; j++) {
             /* bilancio += blockchain[i][j].quantity; */
         }
     }
     return bilancio;
 }
 
-void startUser(sigset_t wset, Config cfg, int shID, int * nodePIDs, int * usersPIDs) {
+void startUser(sigset_t *wset, Config cfg, int shID, int *nodePIDs, int *usersPIDs) {
     struct timespec my_time;
     int sig;
     long bilancio;
 
-    sigwait(&wset, &sig);
-    printf("User avviato.");
+    /*  */
+    setvbuf(stdout, NULL, _IONBF, 0);
 
+    sigwait(wset, &sig);
 
     bilancio = calcBilancio(cfg.SO_BUDGET_INIT);
     if (bilancio >= 2) {
         pid_t receiverPID = usersPIDs[rand() % cfg.SO_USERS_NUM];
 
-        my_time.tv_nsec = rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
+        my_time.tv_nsec =
+                rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
         nanosleep(&my_time, NULL);
     } else {
-        my_time.tv_nsec = rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
+        my_time.tv_nsec =
+                rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
         nanosleep(&my_time, NULL);
     }
 }
