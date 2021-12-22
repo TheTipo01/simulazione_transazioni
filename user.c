@@ -26,7 +26,8 @@
 
 #include "config.c"
 #include "structure.h"
-#include "lib/libsem.h"
+#include "lib/libsem.c"
+#include "enum.c"
 
 #include <time.h>
 #include <unistd.h>
@@ -46,9 +47,9 @@ long calcBilancio(long budget) {
     return bilancio;
 }
 
-void startUser(sigset_t *wset, Config cfg, int shID, int *nodePIDs, int *usersPIDs) {
+_Noreturn void startUser(sigset_t *wset, Config cfg, int shID, int *nodePIDs, int *usersPIDs, int semID) {
     Transazione t;
-    struct timespec my_time;
+    struct timespec *my_time;
     int sig;
     long bilancio;
 
@@ -62,23 +63,26 @@ void startUser(sigset_t *wset, Config cfg, int shID, int *nodePIDs, int *usersPI
     bilancio = cfg.SO_BUDGET_INIT;
 
     while (1) {
-        while (bilancio >= 2) {
+        if (bilancio >= 2) {
             pid_t receiverPID = usersPIDs[rand() % cfg.SO_USERS_NUM];
             pid_t targetNodePID = nodePIDs[rand() % cfg.SO_NODES_NUM];
 
             t.sender = getpid();
             t.receiver = receiverPID;
-            t.timestamp = time(NULL);
-            t.quantity = rand() %
+            clock_gettime(CLOCK_REALTIME, my_time);
+            t.timestamp = *my_time;
+            /* da completare:
+             * t.quantity
+             * t.reward */
 
-                         my_time.tv_nsec =
+            my_time->tv_nsec =
                     rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
             nanosleep(&my_time, NULL);
         }
         /* no more moners :( */
-        /* TODO: aspettare finchè bilancio positivo */
+        /* TODO: aspettare finché bilancio positivo */
 
-        my_time.tv_nsec =
+        my_time->tv_nsec =
                 rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
         nanosleep(&my_time, NULL);
     }

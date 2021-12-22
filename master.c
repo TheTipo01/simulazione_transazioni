@@ -23,8 +23,6 @@
  * user: fa transaction
  * node: elabora transaction e riceve reward
  *
- * TODO: libro mastro come linked list, per sincronizzare usiamo shared memory shit
- * TODO: ogni processo node avrà una message queue a cui gli user inviano messaggi
  * TODO: fare in modo che si possano inviare segnali al master per fare roba™️
  */
 
@@ -33,9 +31,7 @@ int main(int argc, char *argv[]) {
     int *nodePIDs = malloc(cfg.SO_NODES_NUM * sizeof(int));
     int *usersPIDs = malloc(cfg.SO_USERS_NUM * sizeof(int));
     unsigned int i;
-    int currentPid;
-    int shID;
-    int status;
+    int currentPid, shID, status, semID;
     sigset_t wset;
 
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -55,12 +51,16 @@ int main(int argc, char *argv[]) {
     /* Mascheriamo i segnali che usiamo */
     sigprocmask(SIG_BLOCK, &wset, NULL);
 
+    /* Iniziallizziamo i semafori che usiamo */
+    semID = semget(IPC_PRIVATE, 42, IPC_CREAT);
+
+
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         switch (currentPid = fork()) {
             case -1:
                 exit(EXIT_FAILURE);
             case 0:
-                startNode(&wset, cfg, shID, nodePIDs, usersPIDs);
+                startNode(&wset, cfg, shID, nodePIDs, usersPIDs, semID);
                 return 0;
             default:
                 nodePIDs[i] = currentPid;
@@ -72,7 +72,7 @@ int main(int argc, char *argv[]) {
             case -1:
                 exit(EXIT_FAILURE);
             case 0:
-                startUser(&wset, cfg, shID, nodePIDs, usersPIDs);
+                startUser(&wset, cfg, shID, nodePIDs, usersPIDs, semID);
                 exit(0);
             default:
                 usersPIDs[i] = currentPid;
