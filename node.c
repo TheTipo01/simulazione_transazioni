@@ -32,12 +32,12 @@
 
 #define BLOCK_SENDER -1
 
-void startNode(sigset_t *wset, Config cfg, int shID, int *nodePIDs, int *usersPIDs, int semID) {
+void startNode(sigset_t *wset, Config cfg, int ledgerShID, int *nodePIDs, int *usersPIDs, int semID, int readCounterShID) {
     Transazione **trnsToProcess = malloc(SO_BLOCK_SIZE * sizeof(Transazione));
     Transazione **transactionPool = malloc(cfg.SO_TP_SIZE * sizeof(Transazione));
-    int sig, i, j, last = 0, qID;
+    int sig, i, j, k, last = 0, qID, sID;
     long msgType;
-    unsigned int sum;
+    unsigned int sum, *readerCounter;
     struct timespec *cur_time, wait_time;
     Transazione tmp;
     Transazione **libroMastro;
@@ -45,67 +45,81 @@ void startNode(sigset_t *wset, Config cfg, int shID, int *nodePIDs, int *usersPI
     /* Buffer dell'output sul terminale impostato ad asincrono in modo da ricevere comunicazioni dai child */
     setvbuf(stdout, NULL, _IONBF, 0);
 
-    /*
-     * Child aspettano un segnale dal parent: possono iniziare la loro funzione solo dopo che vengono generati
-     * tutti gli altri child
-     */
+    /* Child aspettano un segnale dal parent: possono iniziare la loro funzione solo dopo che vengono generati
+     * tutti gli altri child */
     sigwait(wset, &sig);
 
     /* Creo la coda con chiave PID del nodo */
-    qID = msgget(getpid(), IPC_CREAT | IPC_EXCL);
+    qID = msgget(getpid(), IPC_CREAT);
 
     /* Ci attacchiamo al libro mastro */
-    libroMastro = shmat(shID, NULL, 0);
+    libroMastro = shmat(ledgerShID, NULL, 0);
+
+    readerCounter = shmat(readCounterShID, NULL, 0);
 
     /* Puntatore che serve per cominciare a leggere dalle transazioni nuove, in modo da
      * non inserire transazioni vecchie nel blocco da creare */
     i = 0;
 
-    /* ---------loop--------- */
-    while (transactionPool[i + SO_BLOCK_SIZE - 2] == NULL && last != cfg.SO_TP_SIZE) {
-        msgrcv(qID, &tmp, sizeof(Transazione), msgType, 0);
-        transactionPool[last]->quantity = tmp.quantity;
-        transactionPool[last]->reward = tmp.reward;
-        transactionPool[last]->sender = tmp.sender;
-        transactionPool[last]->receiver = tmp.receiver;
-        transactionPool[last]->timestamp = tmp.timestamp;
-        last++;
-    }
-
-    /* Passo successivo: creazione del blocco avente SO_BLOCK_SIZE-1 transazioni presenti nella TP.
-     * Se però la TP è piena, si avvisa il sender */
-    if (last != cfg.SO_TP_SIZE) {
-
-        /* Creazione blocco */
-        j = 0;
-        for (; i < cfg.SO_TP_SIZE && j < SO_BLOCK_SIZE - 1; i++) {
-            trnsToProcess[i] = transactionPool[i];
-            j++;
+    while (1) {
+        while (transactionPool[i + SO_BLOCK_SIZE - 2] == NULL && last != cfg.SO_TP_SIZE) {
+            msgrcv(qID, &tmp, sizeof(Transazione), msgType, 0);
+            transactionPool[last]->quantity = tmp.quantity;
+            transactionPool[last]->reward = tmp.reward;
+            transactionPool[last]->sender = tmp.sender;
+            transactionPool[last]->receiver = tmp.receiver;
+            transactionPool[last]->timestamp = tmp.timestamp;
+            last++;
         }
-        i += SO_BLOCK_SIZE;
 
-        /* Popolazione blocco */
-        clock_gettime(CLOCK_REALTIME, time);
-        trnsToProcess[SO_BLOCK_SIZE - 1]->timestamp = *cur_time;
-        trnsToProcess[SO_BLOCK_SIZE - 1]->sender = BLOCK_SENDER;
-        trnsToProcess[SO_BLOCK_SIZE - 1]->receiver = getpid();
-        trnsToProcess[SO_BLOCK_SIZE - 1]->reward = 0;
-        for (i = 0; i < SO_BLOCK_SIZE - 1; i++) {
-            sum += trnsToProcess[i]->quantity;
+        sID = msgget(tmp.sender, IPC_CREAT);
+
+        /*
+         * Passo successivo: creazione del blocco avente SO_BLOCK_SIZE-1 transazioni presenti nella TP.
+         * Se però la TP è piena, la transazione viene scartata: si avvisa il sender
+         */
+        if (last != cfg.SO_TP_SIZE) {
+            /* Transazione accettata: inviamo la transazione indietro */
+            msgsnd(sID, &tmp, sizeof(Transazione), IPC_NOWAIT);
+
+            /* Creazione blocco */
+            j = 0;
+            for (; i < cfg.SO_TP_SIZE && j < SO_BLOCK_SIZE - 1; i++) {
+                trnsToProcess[i] = transactionPool[i];
+                j++;
+            }
+            i += SO_BLOCK_SIZE;
+
+            /* Popolazione blocco */
+            clock_gettime(CLOCK_REALTIME, cur_time);
+            trnsToProcess[SO_BLOCK_SIZE - 1]->timestamp = *cur_time;
+            trnsToProcess[SO_BLOCK_SIZE - 1]->sender = BLOCK_SENDER;
+            trnsToProcess[SO_BLOCK_SIZE - 1]->receiver = getpid();
+            trnsToProcess[SO_BLOCK_SIZE - 1]->reward = 0;
+            for (i = 0; i < SO_BLOCK_SIZE - 1; i++) {
+                sum += trnsToProcess[i]->quantity;
+            }
+            trnsToProcess[SO_BLOCK_SIZE - 1]->quantity = sum;
+
+            /* Simulazione elaborazione del blocco */
+            wait_time.tv_nsec =
+                    rand() % (cfg.SO_MAX_TRANS_PROC_NSEC + 1 - cfg.SO_MIN_TRANS_PROC_NSEC) + cfg.SO_MIN_TRANS_PROC_NSEC;
+            nanosleep(&wait_time, NULL);
+
+            /* Scrittura in libro mastro con sincronizzazione (semaforo) */
+            sem_reserve(semID, LEDGER_WRITE);
+            for (k = 0; k < SO_REGISTRY_SIZE; k++) {
+                if (libroMastro[i] == NULL) {
+                    libroMastro[i] = *trnsToProcess;
+                }
+            }
+            sem_release(semID, LEDGER_WRITE);
+
+            /* Allochiamo nuova memoria per le transazioni da processare */
+            trnsToProcess = malloc(SO_BLOCK_SIZE * sizeof(Transazione));
+        } else {
+            /* Notifichiamo l'utente, rinviandogli la transazione rifiutata */
+            msgsnd(sID, NULL, sizeof(Transazione), IPC_NOWAIT);
         }
-        trnsToProcess[SO_BLOCK_SIZE - 1]->quantity = sum;
-
-        /* Simulazione elaborazione del blocco */
-        wait_time.tv_nsec =
-                rand() % (cfg.SO_MAX_TRANS_PROC_NSEC + 1 - cfg.SO_MIN_TRANS_PROC_NSEC) + cfg.SO_MIN_TRANS_PROC_NSEC;
-        nanosleep(&wait_time, NULL);
-
-        /* Scrittura in libro mastro con sincronizzazione (semaforo) */
-        sem_reserve(semID, LEDGER);
-
-        sem_release(semID, LEDGER);
-    } else {
-
     }
-    /* ---------loop--------- */
 }

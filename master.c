@@ -30,16 +30,27 @@ int main(int argc, char *argv[]) {
     Config cfg = newConfig();
     int *nodePIDs = malloc(cfg.SO_NODES_NUM * sizeof(int));
     int *usersPIDs = malloc(cfg.SO_USERS_NUM * sizeof(int));
-    unsigned int i;
-    int currentPid, shID, status, semID;
+    unsigned int i, *readerCounter;
+    int currentPid, ledgerShID, readCounterShID, status, semID;
     sigset_t wset;
 
+    /* Disattiviamo il buffering */
     setvbuf(stdout, NULL, _IONBF, 0);
 
+    /* Seeding di rand con il tempo attuale */
+    srand(time(NULL));
+
     /* Allocazione memoria per il libro mastro */
-    shID = shmget(IPC_PRIVATE, (SO_REGISTRY_SIZE * sizeof(Transazione)) * (SO_BLOCK_SIZE * sizeof(Transazione)),
-                  S_IRUSR | S_IWUSR);
-    if (shID == -1) {
+    ledgerShID = shmget(IPC_PRIVATE, (SO_REGISTRY_SIZE * sizeof(Transazione)) * (SO_BLOCK_SIZE * sizeof(Transazione)),
+                        S_IRUSR | S_IWUSR);
+    if (ledgerShID == -1) {
+        fprintf(stderr, "%s: %d. Errore in semget #%03d: %s\n", __FILE__, __LINE__, errno, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    /* Allocazione del semaforo di lettura come variabile in memoria condivisa */
+    readCounterShID = shmget(IPC_PRIVATE, sizeof(unsigned int), S_IRUSR | S_IWUSR);
+    if (readCounterShID == -1) {
         fprintf(stderr, "%s: %d. Errore in semget #%03d: %s\n", __FILE__, __LINE__, errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
@@ -51,37 +62,44 @@ int main(int argc, char *argv[]) {
     /* Mascheriamo i segnali che usiamo */
     sigprocmask(SIG_BLOCK, &wset, NULL);
 
-    /* Iniziallizziamo i semafori che usiamo */
-    semID = semget(IPC_PRIVATE, 42, IPC_CREAT);
+    /* Inizializziamo i semafori che usiamo */
+    semID = semget(IPC_PRIVATE, FINE_SEMAFORI, IPC_CREAT);
 
+    /* Inizializziamo il semaforo di lettura a 0 */
+    readerCounter = shmat(readCounterShID, NULL, 0);
+    readerCounter = 0;
+    shmdt(&readCounterShID);
 
+    /* Avviamo i processi node */
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         switch (currentPid = fork()) {
             case -1:
                 exit(EXIT_FAILURE);
             case 0:
-                startNode(&wset, cfg, shID, nodePIDs, usersPIDs, semID);
+                startNode(&wset, cfg, ledgerShID, nodePIDs, usersPIDs, semID, readCounterShID);
                 return 0;
             default:
                 nodePIDs[i] = currentPid;
         }
     }
 
+    /* E i processi user */
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
         switch (currentPid = fork()) {
             case -1:
                 exit(EXIT_FAILURE);
             case 0:
-                startUser(&wset, cfg, shID, nodePIDs, usersPIDs, semID);
+                startUser(&wset, cfg, ledgerShID, nodePIDs, usersPIDs, semID, readCounterShID);
                 exit(0);
             default:
                 usersPIDs[i] = currentPid;
         }
     }
 
-    fprintf(stdout, "\nFinito!");
+    /* Notifichiamo i processi che gli array dei pid sono stati popolati */
     kill(0, SIGUSR1);
-    /* Aspettiamo che i processi finiscano */
+
+    /* Aspettiamo che i processi utente finiscano (DA FIXARE)*/
     waitpid(0, &status, 0);
 
     /* TODO: check per i segnali*/

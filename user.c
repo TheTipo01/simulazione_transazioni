@@ -13,7 +13,7 @@
  *           - Se il bilancio è minore di 2, allora il processo non invia alcuna transazione
  *     - Invia al nodo scelto la transazione, e attende un intervallo di tempo tra SO_MIN_TRANS_GEN_NSEC e SO_MAX_TRANS_GEN_NSEC
  *
- * Dovrà anche gestire un segnale per generare una transazione (segnale da scegliere)
+ * Dovrà anche gestire un segnale per generare una transazione (segnale da scegliere) --> usare un handler
  *
  * Funzione transaction inviata da utente a nodo, deve avere:
  *      timestamp
@@ -28,30 +28,62 @@
 #include "structure.h"
 #include "lib/libsem.c"
 #include "enum.c"
+#include "utilities.c"
 
 #include <time.h>
 #include <unistd.h>
 #include <signal.h>
+#include <sys/msg.h>
+#include <sys/shm.h>
 
-long calcBilancio(long budget) {
-    long bilancio;
+int failedTransaction = 0;
+
+long calcBilancio(long balance, int semID, Transazione **lm, unsigned int *readCounter) {
     int i, j;
 
-    bilancio = 0;
+    /* Dobbiamo eseguire una lettura del libro mastro, quindi impostiamo il semaforo di lettura */
+    read_start(semID, readCounter);
 
+    /* Cicliamo all'interno del libro mastro per controllare ogni transazione eseguita */
     for (i = 0; i < SO_REGISTRY_SIZE; i++) {
-        for (j = 0; j < SO_BLOCK_SIZE; j++) {
-            /* bilancio += blockchain[i][j].quantity; */
+
+        /* Se in posizione i c'è un blocco, controlliamo il contenuto */
+        if (lm[i] != NULL) {
+            for (j = 0; j < SO_BLOCK_SIZE; j++) {
+
+                /* Se nella transazione il ricevente è l'utente stesso, allora
+                 * aggiungiamo al bilancio la quantità della transazione */
+                if (lm[i][j].receiver == getpid()) {
+                    balance += lm[i][j].quantity;
+                }
+
+                /* Se nella transazione il mittente è l'utente stesso, allora
+                 * sottraiamo al bilancio la quantità della transazione */
+                if (lm[i][j].sender == getpid()) {
+                    balance -= lm[i][j].quantity;
+                }
+            }
         }
     }
-    return bilancio;
+
+    /* Rilasciamo il semaforo di lettura a fine operazione */
+    read_end(semID, readCounter);
+
+    return balance;
 }
 
-_Noreturn void startUser(sigset_t *wset, Config cfg, int shID, int *nodePIDs, int *usersPIDs, int semID) {
-    Transazione t;
+void startUser(sigset_t *wset, Config cfg, int ledgerShID, int *nodePIDs, int *usersPIDs, int semID, int readCounterShID) {
+    Transazione *t;
     struct timespec *my_time;
-    int sig;
-    long bilancio;
+    int sig, uID, nID;
+    long bilancio = cfg.SO_BUDGET_INIT, msgType;
+    Transazione **libroMastro;
+    unsigned int *readerCounter;
+
+    /* Collegamento del libro mastro */
+    libroMastro = shmat(ledgerShID, NULL, 0);
+
+    readerCounter = shmat(readCounterShID, NULL, 0);
 
     /* Buffer dell'output sul terminale impostato ad asincrono in modo da ricevere comunicazioni dai child */
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -60,30 +92,48 @@ _Noreturn void startUser(sigset_t *wset, Config cfg, int shID, int *nodePIDs, in
      * tutti gli altri child */
     sigwait(wset, &sig);
 
-    bilancio = cfg.SO_BUDGET_INIT;
+    /* Creo la coda con chiave PID dell'utente */
+    uID = msgget(getpid(), IPC_CREAT);
 
-    while (1) {
+    while (failedTransaction < cfg.SO_RETRY) {
+        t = malloc(sizeof(Transazione));
+
+        /* Calcolo del bilancio dell'utente */
+        bilancio += calcBilancio(bilancio, semID, libroMastro, readerCounter);
+
         if (bilancio >= 2) {
             pid_t receiverPID = usersPIDs[rand() % cfg.SO_USERS_NUM];
             pid_t targetNodePID = nodePIDs[rand() % cfg.SO_NODES_NUM];
 
-            t.sender = getpid();
-            t.receiver = receiverPID;
+            /* Creazione coda di messaggi del nodo scelto come target */
+            nID = msgget(targetNodePID, IPC_CREAT);
+
+            t->sender = getpid();
+            t->receiver = receiverPID;
             clock_gettime(CLOCK_REALTIME, my_time);
-            t.timestamp = *my_time;
-            /* da completare:
-             * t.quantity
-             * t.reward */
+            t->timestamp = *my_time;
+            t->quantity = rand() % (cfg.SO_BUDGET_INIT + 1 - 2) + 2;
+            if (cfg.SO_REWARD < 1) t->reward = 1;
+            else t->reward = cfg.SO_REWARD;
+
+            /* Invio al nodo la transazione */
+            msgsnd(nID, &t, sizeof(Transazione), 0);
+
+            t = NULL;
+
+            /* Aspetto il messaggio di successo/fallimento */
+            msgrcv(uID, &t, sizeof(Transazione), msgType, 0);
+            if (t == NULL) failedTransaction++;
 
             my_time->tv_nsec =
                     rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
-            nanosleep(&my_time, NULL);
+            nanosleep(my_time, NULL);
         }
         /* no more moners :( */
         /* TODO: aspettare finché bilancio positivo */
 
         my_time->tv_nsec =
                 rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
-        nanosleep(&my_time, NULL);
+        nanosleep(my_time, NULL);
     }
 }
