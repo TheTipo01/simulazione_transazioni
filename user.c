@@ -38,7 +38,8 @@
 
 int failedTransaction = 0;
 
-long calcBilancio(long balance, int semID, Transazione **lm, unsigned int *readCounter) {
+long calcBilancio(long balance, int semID, Transazione **lm, unsigned int *readCounter, unsigned int userIndex,
+                  Processo *userPIDs) {
     int i, j;
 
     /* Dobbiamo eseguire una lettura del libro mastro, quindi impostiamo il semaforo di lettura */
@@ -54,13 +55,13 @@ long calcBilancio(long balance, int semID, Transazione **lm, unsigned int *readC
                 /* Se nella transazione il ricevente è l'utente stesso, allora
                  * aggiungiamo al bilancio la quantità della transazione */
                 if (lm[i][j].receiver == getpid()) {
-                    balance += lm[i][j].quantity;
+                    userPIDs[userIndex].balance += lm[i][j].quantity;
                 }
 
                 /* Se nella transazione il mittente è l'utente stesso, allora
                  * sottraiamo al bilancio la quantità della transazione */
                 if (lm[i][j].sender == getpid()) {
-                    balance -= lm[i][j].quantity;
+                    userPIDs[userIndex].balance -= lm[i][j].quantity;
                 }
             }
         }
@@ -72,38 +73,46 @@ long calcBilancio(long balance, int semID, Transazione **lm, unsigned int *readC
     return balance;
 }
 
-void startUser(sigset_t *wset, Config cfg, int ledgerShID, int *nodePIDs, int *usersPIDs, int semID, int readCounterShID) {
+void startUser(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int semID,
+               int readCounterShID, unsigned int userIndex) {
     Transazione *t;
     struct timespec *my_time;
     int sig, uID, nID;
     long bilancio = cfg.SO_BUDGET_INIT, msgType;
     Transazione **libroMastro;
     unsigned int *readerCounter;
+    Processo *nodePIDs, *usersPIDs;
+
+    /* Buffer dell'output sul terminale impostato ad asincrono in modo da ricevere comunicazioni dai child */
+    setvbuf(stdout, NULL, _IONBF, 0);
 
     /* Collegamento del libro mastro */
     libroMastro = shmat(ledgerShID, NULL, 0);
 
     readerCounter = shmat(readCounterShID, NULL, 0);
 
-    /* Buffer dell'output sul terminale impostato ad asincrono in modo da ricevere comunicazioni dai child */
-    setvbuf(stdout, NULL, _IONBF, 0);
+    /* Creo la coda con chiave PID dell'utente */
+    uID = msgget(getpid(), IPC_CREAT);
+
+    /* Collegamento all'array dello stato dei processi utente */
+    usersPIDs = shmat(usersPIDsID, NULL, 0);
+
+    /* Collegamento all'array dello stato dei processi nodo */
+    nodePIDs = shmat(nodePIDsID, NULL, 0);
 
     /* Child aspettano un segnale dal parent: possono iniziare la loro funzione solo dopo che vengono generati
      * tutti gli altri child */
     sigwait(wset, &sig);
 
-    /* Creo la coda con chiave PID dell'utente */
-    uID = msgget(getpid(), IPC_CREAT);
-
     while (failedTransaction < cfg.SO_RETRY) {
         t = malloc(sizeof(Transazione));
 
         /* Calcolo del bilancio dell'utente */
-        bilancio += calcBilancio(bilancio, semID, libroMastro, readerCounter);
+        bilancio += calcBilancio(bilancio, semID, libroMastro, readerCounter, userIndex, usersPIDs);
 
         if (bilancio >= 2) {
-            pid_t receiverPID = usersPIDs[rand() % cfg.SO_USERS_NUM];
-            pid_t targetNodePID = nodePIDs[rand() % cfg.SO_NODES_NUM];
+            pid_t receiverPID = usersPIDs[rand() % cfg.SO_USERS_NUM].pid;
+            pid_t targetNodePID = nodePIDs[rand() % cfg.SO_NODES_NUM].pid;
 
             /* Creazione coda di messaggi del nodo scelto come target */
             nID = msgget(targetNodePID, IPC_CREAT);
@@ -112,9 +121,9 @@ void startUser(sigset_t *wset, Config cfg, int ledgerShID, int *nodePIDs, int *u
             t->receiver = receiverPID;
             clock_gettime(CLOCK_REALTIME, my_time);
             t->timestamp = *my_time;
-            t->quantity = rand() % (cfg.SO_BUDGET_INIT + 1 - 2) + 2;
             if (cfg.SO_REWARD < 1) t->reward = 1;
             else t->reward = cfg.SO_REWARD;
+            t->quantity = rand() % (cfg.SO_BUDGET_INIT + 1 - 2) + 2;
 
             /* Invio al nodo la transazione */
             msgsnd(nID, &t, sizeof(Transazione), 0);
@@ -128,12 +137,28 @@ void startUser(sigset_t *wset, Config cfg, int ledgerShID, int *nodePIDs, int *u
             my_time->tv_nsec =
                     rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
             nanosleep(my_time, NULL);
-        }
-        /* no more moners :( */
-        /* TODO: aspettare finché bilancio positivo */
 
-        my_time->tv_nsec =
-                rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
-        nanosleep(my_time, NULL);
+        } else {
+            /* no more moners :( */
+            /* TODO: aspettare finché bilancio positivo */
+
+            my_time->tv_nsec =
+                    rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
+            nanosleep(my_time, NULL);
+        }
     }
+
+    /* Cleanup prima di uscire */
+
+    /* Detach di tutte le shared memory */
+    shmdt_error_checking(libroMastro);
+    shmdt_error_checking(readerCounter);
+    shmdt_error_checking(usersPIDs);
+    shmdt_error_checking(nodePIDs);
+
+    /* Chiusura delle code di messaggi utilizzate */
+    msgctl(uID, IPC_RMID, NULL);
+
+    /* Impostazione dello stato del nostro processo */
+    usersPIDs[userIndex].status = PROCESS_FINISHED;
 }

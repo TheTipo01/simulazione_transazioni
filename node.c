@@ -32,22 +32,26 @@
 
 #define BLOCK_SENDER -1
 
-void startNode(sigset_t *wset, Config cfg, int ledgerShID, int *nodePIDs, int *usersPIDs, int semID, int readCounterShID) {
+void startNode(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int semID,
+               int readCounterShID, unsigned int nodeIndex) {
     Transazione **trnsToProcess = malloc(SO_BLOCK_SIZE * sizeof(Transazione));
     Transazione **transactionPool = malloc(cfg.SO_TP_SIZE * sizeof(Transazione));
-    int sig, i, j, k, last = 0, qID, sID;
+    int sig, i = 0, j, k, last = 0, qID, sID;
     long msgType;
     unsigned int sum, *readerCounter;
     struct timespec *cur_time, wait_time;
     Transazione tmp;
     Transazione **libroMastro;
+    Processo *nodePIDs, *usersPIDs;
 
     /* Buffer dell'output sul terminale impostato ad asincrono in modo da ricevere comunicazioni dai child */
     setvbuf(stdout, NULL, _IONBF, 0);
 
-    /* Child aspettano un segnale dal parent: possono iniziare la loro funzione solo dopo che vengono generati
-     * tutti gli altri child */
-    sigwait(wset, &sig);
+    /* Collegamento all'array dello stato dei processi utente */
+    usersPIDs = shmat(usersPIDsID, NULL, 0);
+
+    /* Collegamento all'array dello stato dei processi nodo */
+    nodePIDs = shmat(nodePIDsID, NULL, 0);
 
     /* Creo la coda con chiave PID del nodo */
     qID = msgget(getpid(), IPC_CREAT);
@@ -57,18 +61,21 @@ void startNode(sigset_t *wset, Config cfg, int ledgerShID, int *nodePIDs, int *u
 
     readerCounter = shmat(readCounterShID, NULL, 0);
 
-    /* Puntatore che serve per cominciare a leggere dalle transazioni nuove, in modo da
-     * non inserire transazioni vecchie nel blocco da creare */
-    i = 0;
+    /*
+     * Child aspettano un segnale dal parent: possono iniziare la loro funzione solo dopo che vengono generati
+     * tutti gli altri child
+     */
+    sigwait(wset, &sig);
 
     while (1) {
         while (transactionPool[i + SO_BLOCK_SIZE - 2] == NULL && last != cfg.SO_TP_SIZE) {
             msgrcv(qID, &tmp, sizeof(Transazione), msgType, 0);
-            transactionPool[last]->quantity = tmp.quantity;
+            transactionPool[last]->quantity = tmp.quantity * ((100 - tmp.reward) / 100);
             transactionPool[last]->reward = tmp.reward;
             transactionPool[last]->sender = tmp.sender;
             transactionPool[last]->receiver = tmp.receiver;
             transactionPool[last]->timestamp = tmp.timestamp;
+            nodePIDs[nodeIndex].balance += tmp.quantity * (tmp.reward / 100);
             last++;
         }
 
@@ -122,4 +129,17 @@ void startNode(sigset_t *wset, Config cfg, int ledgerShID, int *nodePIDs, int *u
             msgsnd(sID, NULL, sizeof(Transazione), IPC_NOWAIT);
         }
     }
+
+    /* Cleanup prima di uscire */
+
+    /* Detach di tutte le shared memory */
+    shmdt_error_checking(nodePIDs);
+    shmdt_error_checking(usersPIDs);
+    shmdt_error_checking(libroMastro);
+
+    /* Chiusura delle code di messaggi */
+    msgctl(qID, IPC_RMID, NULL);
+
+    /* Impostazione dello stato del nostro processo */
+    nodePIDs[nodeIndex].status = PROCESS_FINISHED;
 }

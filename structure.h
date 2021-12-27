@@ -20,4 +20,16 @@ typedef struct Transazione {
     unsigned int reward;
 } Transazione;
 
+/* Struttura per tenere lo stato di un processo e il suo pid */
+typedef struct Processo {
+    /* PID del processo */
+    int pid;
+
+    /* Stato del processo. Vedasi process_status */
+    int status;
+
+    /* Bilancio del processo */
+    unsigned int balance;
+} Processo;
+
 #endif

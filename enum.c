@@ -5,4 +5,10 @@ enum semafori {
     LEDGER_WRITE,
     FINE_SEMAFORI
 };
+
+enum process_status {
+    PROCESS_RUNNING,
+    PROCESS_WAITING,
+    PROCESS_FINISHED
+};
 #endif
