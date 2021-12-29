@@ -101,6 +101,7 @@ int main(int argc, char *argv[]) {
                 return 0;
             default:
                 nodePIDs[i].pid = currentPid;
+                nodePIDs[i].balance = 0;
                 nodePIDs[i].status = PROCESS_WAITING;
         }
     }
@@ -118,6 +119,7 @@ int main(int argc, char *argv[]) {
                 exit(0);
             default:
                 usersPIDs[i].pid = currentPid;
+                usersPIDs[i].balance = cfg.SO_BUDGET_INIT;
                 usersPIDs[i].status = PROCESS_WAITING;
         }
     }
@@ -143,7 +145,6 @@ int main(int argc, char *argv[]) {
         }
     } else {
         while (execTime < cfg.SO_SIM_SEC) {
-            /* TODO: completare funzione per visualizzare stato processi */
             printStatus(nodePIDs, usersPIDs, &cfg);
             nanosleep(delay, NULL);
             execTime++;

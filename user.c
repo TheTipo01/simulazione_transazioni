@@ -36,33 +36,23 @@
 #include <sys/msg.h>
 #include <sys/shm.h>
 
-int failedTransaction = 0;
+int failedTransaction = 0, i = 0;
 
-long calcBilancio(long balance, int semID, Transazione **lm, unsigned int *readCounter, unsigned int userIndex,
-                  Processo *userPIDs) {
-    int i, j;
+unsigned int calcEntrate(int semID, Transazione **lm, unsigned int *readCounter) {
+    int pid = getpid(), j;
+    unsigned int tmpBalance = 0;
 
     /* Dobbiamo eseguire una lettura del libro mastro, quindi impostiamo il semaforo di lettura */
     read_start(semID, readCounter);
 
     /* Cicliamo all'interno del libro mastro per controllare ogni transazione eseguita */
-    for (i = 0; i < SO_REGISTRY_SIZE; i++) {
-
+    for (; i < SO_REGISTRY_SIZE && lm[i] != NULL; i++) {
         /* Se in posizione i c'è un blocco, controlliamo il contenuto */
-        if (lm[i] != NULL) {
-            for (j = 0; j < SO_BLOCK_SIZE; j++) {
-
-                /* Se nella transazione il ricevente è l'utente stesso, allora
-                 * aggiungiamo al bilancio la quantità della transazione */
-                if (lm[i][j].receiver == getpid()) {
-                    userPIDs[userIndex].balance += lm[i][j].quantity;
-                }
-
-                /* Se nella transazione il mittente è l'utente stesso, allora
-                 * sottraiamo al bilancio la quantità della transazione */
-                if (lm[i][j].sender == getpid()) {
-                    userPIDs[userIndex].balance -= lm[i][j].quantity;
-                }
+        for (j = 0; j < SO_BLOCK_SIZE; j++) {
+            /* Se nella transazione il ricevente è l'utente stesso, allora
+             * aggiungiamo al bilancio la quantità della transazione */
+            if (lm[i][j].receiver == pid) {
+                tmpBalance += lm[i][j].quantity;
             }
         }
     }
@@ -70,7 +60,7 @@ long calcBilancio(long balance, int semID, Transazione **lm, unsigned int *readC
     /* Rilasciamo il semaforo di lettura a fine operazione */
     read_end(semID, readCounter);
 
-    return balance;
+    return tmpBalance;
 }
 
 void startUser(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int semID,
@@ -78,7 +68,7 @@ void startUser(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
     Transazione *t;
     struct timespec *my_time;
     int sig, uID, nID;
-    long bilancio = cfg.SO_BUDGET_INIT, msgType;
+    long msgType;
     Transazione **libroMastro;
     unsigned int *readerCounter;
     Processo *nodePIDs, *usersPIDs;
@@ -107,10 +97,10 @@ void startUser(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
     while (failedTransaction < cfg.SO_RETRY) {
         t = malloc(sizeof(Transazione));
 
-        /* Calcolo del bilancio dell'utente */
-        bilancio += calcBilancio(bilancio, semID, libroMastro, readerCounter, userIndex, usersPIDs);
+        /* Calcolo del bilancio dell'utente: calcoliamo solo le entrate, in quanto le uscite vengono registrate dopo */
+        usersPIDs[userIndex].balance += calcEntrate(semID, libroMastro, readerCounter);
 
-        if (bilancio >= 2) {
+        if (usersPIDs[userIndex].balance >= 2) {
             pid_t receiverPID = usersPIDs[rand() % cfg.SO_USERS_NUM].pid;
             pid_t targetNodePID = nodePIDs[rand() % cfg.SO_NODES_NUM].pid;
 
@@ -132,7 +122,13 @@ void startUser(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
 
             /* Aspetto il messaggio di successo/fallimento */
             msgrcv(uID, &t, sizeof(Transazione), msgType, 0);
-            if (t == NULL) failedTransaction++;
+            if (t == NULL) {
+                /* Se la transazione fallisce, aumentiamo il contatore delle transazioni fallite di 1 */
+                failedTransaction++;
+            } else {
+                /* Se la transazione ha avuto successo, aggiorniamo il bilancio con l'uscita appena effettuata */
+                usersPIDs[userIndex].balance -= t->quantity * ((100 - t->reward) / 100);
+            }
 
             my_time->tv_nsec =
                     rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
@@ -140,8 +136,7 @@ void startUser(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
 
         } else {
             /* no more moners :( */
-            /* TODO: aspettare finché bilancio positivo */
-
+            /* TODO: fare aspettare lo user finché il suo bilancio non è positivo, inviandogli un messaggio per risvegliarlo */
             my_time->tv_nsec =
                     rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
             nanosleep(my_time, NULL);
