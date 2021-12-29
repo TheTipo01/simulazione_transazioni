@@ -2,7 +2,7 @@
 #ifndef STRUCTURE_H
 #define STRUCTURE_H
 
-typedef struct Transazione {
+struct Transazione {
     /* Timestamp della transazione con risoluzione dei nanosecondi
         (vedere funzione clock_gettime()) */
     struct timespec timestamp;
@@ -18,7 +18,12 @@ typedef struct Transazione {
 
     /* Denaro pagato dal sender al nodo che processa la transazione */
     unsigned int reward;
-} Transazione;
+};
+
+struct Messaggio {
+    long m_type;
+    struct Transazione transazione;
+};
 
 /* Struttura per tenere lo stato di un processo e il suo pid */
 typedef struct Processo {

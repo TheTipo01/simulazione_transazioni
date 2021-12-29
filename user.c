@@ -38,7 +38,7 @@
 
 int failedTransaction = 0, i = 0;
 
-unsigned int calcEntrate(int semID, Transazione **lm, unsigned int *readCounter) {
+unsigned int calcEntrate(int semID, struct Transazione **lm, unsigned int *readCounter) {
     int pid = getpid(), j;
     unsigned int tmpBalance = 0;
 
@@ -65,13 +65,14 @@ unsigned int calcEntrate(int semID, Transazione **lm, unsigned int *readCounter)
 
 void startUser(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int semID,
                int readCounterShID, unsigned int userIndex) {
-    Transazione *t;
     struct timespec *my_time;
     int sig, uID, nID;
     long msgType;
-    Transazione **libroMastro;
+    struct Transazione **libroMastro;
     unsigned int *readerCounter;
     Processo *nodePIDs, *usersPIDs;
+    struct Messaggio *msg;
+    struct Transazione *msg_feedback;
 
     /* Buffer dell'output sul terminale impostato ad asincrono in modo da ricevere comunicazioni dai child */
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -95,7 +96,7 @@ void startUser(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
     sigwait(wset, &sig);
 
     while (failedTransaction < cfg.SO_RETRY) {
-        t = malloc(sizeof(Transazione));
+        msg = malloc(sizeof(struct Messaggio));
 
         /* Calcolo del bilancio dell'utente: calcoliamo solo le entrate, in quanto le uscite vengono registrate dopo */
         usersPIDs[userIndex].balance += calcEntrate(semID, libroMastro, readerCounter);
@@ -107,27 +108,27 @@ void startUser(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
             /* Creazione coda di messaggi del nodo scelto come target */
             nID = msgget(targetNodePID, IPC_CREAT);
 
-            t->sender = getpid();
-            t->receiver = receiverPID;
+            msg->transazione.sender = getpid();
+            msg->transazione.receiver = receiverPID;
             clock_gettime(CLOCK_REALTIME, my_time);
-            t->timestamp = *my_time;
-            if (cfg.SO_REWARD < 1) t->reward = 1;
-            else t->reward = cfg.SO_REWARD;
-            t->quantity = rand() % (cfg.SO_BUDGET_INIT + 1 - 2) + 2;
+            msg->transazione.timestamp = *my_time;
+            if (cfg.SO_REWARD < 1) msg->transazione.reward = 1;
+            else msg->transazione.reward = cfg.SO_REWARD;
+            msg->transazione.quantity = rand() % (cfg.SO_BUDGET_INIT + 1 - 2) + 2;
+
+            msg->m_type = 0;
 
             /* Invio al nodo la transazione */
-            msgsnd(nID, &t, sizeof(Transazione), 0);
-
-            t = NULL;
+            msgsnd(nID, &msg, sizeof(struct Transazione), 0);
 
             /* Aspetto il messaggio di successo/fallimento */
-            msgrcv(uID, &t, sizeof(Transazione), msgType, 0);
-            if (t == NULL) {
+            msgrcv(uID, &msg_feedback, sizeof(struct Transazione), 0, 0);
+            if (msg_feedback == NULL) {
                 /* Se la transazione fallisce, aumentiamo il contatore delle transazioni fallite di 1 */
                 failedTransaction++;
             } else {
                 /* Se la transazione ha avuto successo, aggiorniamo il bilancio con l'uscita appena effettuata */
-                usersPIDs[userIndex].balance -= t->quantity * ((100 - t->reward) / 100);
+                usersPIDs[userIndex].balance -= msg->transazione.quantity * ((100 - msg->transazione.reward) / 100);
             }
 
             my_time->tv_nsec =

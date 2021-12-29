@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
     int currentPid, ledgerShID, readCounterShID, status, semID, nodePIDsID, usersPIDsID;
     sigset_t wset;
     struct timespec *delay;
-    Transazione **libroMastro;
+    struct Transazione **libroMastro;
     Processo *nodePIDs, *usersPIDs;
 
     /* Disattiviamo il buffering */
@@ -42,7 +42,8 @@ int main(int argc, char *argv[]) {
     srand(time(NULL));
 
     /* Allocazione memoria per il libro mastro */
-    ledgerShID = shmget(IPC_PRIVATE, (SO_REGISTRY_SIZE * sizeof(Transazione)) * (SO_BLOCK_SIZE * sizeof(Transazione)),
+    ledgerShID = shmget(IPC_PRIVATE,
+                        (SO_REGISTRY_SIZE * sizeof(struct Transazione)) * (SO_BLOCK_SIZE * sizeof(struct Transazione)),
                         S_IRUSR | S_IWUSR);
     if (ledgerShID == -1) {
         fprintf(stderr, "%s: %d. Errore in semget #%03d: %s\n", __FILE__, __LINE__, errno, strerror(errno));

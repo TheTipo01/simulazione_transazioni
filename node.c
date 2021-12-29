@@ -34,15 +34,15 @@
 
 void startNode(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int semID,
                int readCounterShID, unsigned int nodeIndex) {
-    Transazione **trnsToProcess = malloc(SO_BLOCK_SIZE * sizeof(Transazione));
-    Transazione **transactionPool = malloc(cfg.SO_TP_SIZE * sizeof(Transazione));
+    struct Transazione **trnsToProcess = malloc(SO_BLOCK_SIZE * sizeof(struct Transazione));
+    struct Transazione **transactionPool = malloc(cfg.SO_TP_SIZE * sizeof(struct Transazione));
     int sig, i = 0, j, k, last = 0, qID, sID;
-    long msgType;
     unsigned int sum, *readerCounter;
     struct timespec *cur_time, wait_time;
-    Transazione tmp;
-    Transazione **libroMastro;
+    struct Transazione tmp;
+    struct Transazione **libroMastro;
     Processo *nodePIDs, *usersPIDs;
+    struct Messaggio *msg;
 
     /* Buffer dell'output sul terminale impostato ad asincrono in modo da ricevere comunicazioni dai child */
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -67,9 +67,10 @@ void startNode(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
      */
     sigwait(wset, &sig);
 
+    /* TODO: finire di fixare i messaggi */
     while (1) {
         while (transactionPool[i + SO_BLOCK_SIZE - 2] == NULL && last != cfg.SO_TP_SIZE) {
-            msgrcv(qID, &tmp, sizeof(Transazione), msgType, 0);
+            msgrcv(qID, &tmp, sizeof(struct Transazione), 0, 0);
             transactionPool[last]->quantity = tmp.quantity * ((100 - tmp.reward) / 100);
             transactionPool[last]->reward = tmp.reward;
             transactionPool[last]->sender = tmp.sender;
@@ -87,7 +88,11 @@ void startNode(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
          */
         if (last != cfg.SO_TP_SIZE) {
             /* Transazione accettata: inviamo la transazione indietro */
-            msgsnd(sID, &tmp, sizeof(Transazione), IPC_NOWAIT);
+            /* TODO: maybe smettere di leakare memoria, idk (però solo quando funziona tutto:tm:) */
+            msg = malloc(sizeof(struct Messaggio));
+
+            msg->m_type = 1;
+            msgsnd(sID, &msg, sizeof(struct Transazione), IPC_NOWAIT);
 
             /* Creazione blocco */
             j = 0;
@@ -123,10 +128,10 @@ void startNode(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
             sem_release(semID, LEDGER_WRITE);
 
             /* Allochiamo nuova memoria per le transazioni da processare */
-            trnsToProcess = malloc(SO_BLOCK_SIZE * sizeof(Transazione));
+            trnsToProcess = malloc(SO_BLOCK_SIZE * sizeof(struct Transazione));
         } else {
             /* Notifichiamo l'utente, rinviandogli la transazione rifiutata */
-            msgsnd(sID, NULL, sizeof(Transazione), IPC_NOWAIT);
+            msgsnd(sID, NULL, sizeof(struct Transazione), IPC_NOWAIT);
         }
     }
 
