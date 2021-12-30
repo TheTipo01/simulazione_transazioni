@@ -5,6 +5,7 @@
 #include "node.c"
 #include "structure.h"
 #include "lib/libsem.c"
+#include "utilities.c"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,8 +29,8 @@
 
 int main(int argc, char *argv[]) {
     Config cfg = newConfig();
-    unsigned int i, j, *readerCounter, execTime = 0;
-    int currentPid, ledgerShID, readCounterShID, status, semID, nodePIDsID, usersPIDsID;
+    unsigned int *readerCounter, execTime = 0;
+    int i, j = 0, currentPid, ledgerShID, readCounterShID, status, semID, nodePIDsID, usersPIDsID, stopShID, *stop;
     sigset_t wset;
     struct timespec *delay;
     struct Transazione **libroMastro;
@@ -71,6 +72,13 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    /* Allocazione del flag per far terminare correttamente i processi */
+    stopShID = shmget(IPC_PRIVATE, sizeof(int), S_IRUSR | S_IWUSR);
+    if (stopShID == -1) {
+        fprintf(stderr, "%s: %d. Errore in semget #%03d: %s\n", __FILE__, __LINE__, errno, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
     sigaddset(&wset, SIGUSR1);
@@ -83,8 +91,12 @@ int main(int argc, char *argv[]) {
 
     /* Inizializziamo il semaforo di lettura a 0 */
     readerCounter = shmat(readCounterShID, NULL, 0);
-    readerCounter = 0;
-    shmdt(&readCounterShID);
+    *readerCounter = 0;
+    shmdt_error_checking(&readCounterShID);
+
+    /* Inizializziamo il flag di terminazione a 1 (verrà abbassato quando tutti i processi devono terminare) */
+    stop = shmat(stopShID, NULL, 0);
+    *stop = -1;
 
     /* Collegamento del libro mastro (ci serve per controllo dati) */
     libroMastro = shmat(ledgerShID, NULL, 0);
@@ -98,12 +110,13 @@ int main(int argc, char *argv[]) {
             case -1:
                 exit(EXIT_FAILURE);
             case 0:
-                startNode(&wset, cfg, ledgerShID, nodePIDsID, usersPIDsID, semID, readCounterShID, i);
+                startNode(&wset, cfg, ledgerShID, nodePIDsID, usersPIDsID, semID, readCounterShID, i, stopShID);
                 return 0;
             default:
                 nodePIDs[i].pid = currentPid;
                 nodePIDs[i].balance = 0;
                 nodePIDs[i].status = PROCESS_WAITING;
+                nodePIDs[i].transactions = 0;
         }
     }
 
@@ -116,12 +129,13 @@ int main(int argc, char *argv[]) {
             case -1:
                 exit(EXIT_FAILURE);
             case 0:
-                startUser(&wset, cfg, ledgerShID, nodePIDsID, usersPIDsID, semID, readCounterShID, i);
+                startUser(&wset, cfg, ledgerShID, nodePIDsID, usersPIDsID, semID, readCounterShID, i, stopShID);
                 exit(0);
             default:
                 usersPIDs[i].pid = currentPid;
                 usersPIDs[i].balance = cfg.SO_BUDGET_INIT;
                 usersPIDs[i].status = PROCESS_WAITING;
+                usersPIDs[i].transactions = -1;
         }
     }
 
@@ -133,30 +147,76 @@ int main(int argc, char *argv[]) {
      * Se finisce il tempo/tutti i processi utente finiscono/il libro mastro è pieno, terminare la simulazione.
      */
     delay->tv_nsec = 1000000000;
-    if (fork()) {
-        /* TODO: inserire check per fine tempo esecuzione */
-        while (j != -1) {
-            j = 0;
-            if (libroMastro[SO_REGISTRY_SIZE] != NULL) j = -1;
-            for (i = 0; i < cfg.SO_USERS_NUM && j != -1; i++) {
-                if (usersPIDs[i].status == PROCESS_RUNNING || usersPIDs[i].status == PROCESS_WAITING) j++;
-            }
-            /* TODO: fare in modo che i nodes finiscono quando tutti gli users finiscono */
-            if (j == 0) j = -1;
-        }
-    } else {
-        while (execTime < cfg.SO_SIM_SEC) {
+    if (!fork()) {
+        stop = shmat(stopShID, NULL, 0);
+        while (execTime < cfg.SO_SIM_SEC && *stop < -1) {
             printStatus(nodePIDs, usersPIDs, &cfg);
             nanosleep(delay, NULL);
             execTime++;
         }
-        /* TODO: inviare msg di fine exec al master */
+
+        if (execTime == cfg.SO_SIM_SEC) {
+            *stop = TIMEDOUT;
+        }
+
+        shmdt_error_checking(stop);
+        return 0;
     }
 
-    /* Aspettiamo che i processi utente finiscano (DA FIXARE)*/
+    /* Aspettiamo che i processi finiscano */
     waitpid(0, &status, 0);
 
-    /* TODO: check per i segnali*/
+    /*
+     * Dopo la terminazione dei processi nodo e utente, cominciamo la terminazione della simulazione con la
+     * stampa del riepilogo
+     */
+
+    /* Stampa della causa di terminazione della simulazione */
+    switch (*stop) {
+        case LEDGERFULL:
+            fprintf(stdout, "--- TERMINE SIMULAZIONE ---\nCausa terminazione: il libro mastro è pieno.\n\n");
+            break;
+        case TIMEDOUT:
+            fprintf(stdout, "--- TERMINE SIMULAZIONE ---\nCausa terminazione: sono passati %d secondi.\n\n",
+                    cfg.SO_SIM_SEC);
+            break;
+        default:
+            fprintf(stdout,
+                    "--- TERMINE SIMULAZIONE ---\nCausa terminazione: tutti i processi utente sono terminati.\n\n");
+    }
+
+    /* Stampa dello stato e del bilancio di ogni processo utente */
+    fprintf(stdout, "PROCESSI UTENTE:\n");
+    for (i = 0; i < cfg.SO_USERS_NUM; i++) {
+        fprintf(stdout, "       #%d, balance = %d\n", usersPIDs[i].pid, usersPIDs[i].balance);
+    }
+    fprintf(stdout, "\n");
+
+    /* Stampa del bilancio di ogni processo nodo */
+    fprintf(stdout, "PROCESSI NODO:\n");
+    for (i = 0; i < cfg.SO_NODES_NUM; i++) {
+        fprintf(stdout, "       #%d, balance = %d\n", nodePIDs[i].pid, nodePIDs[i].balance);
+    }
+    fprintf(stdout, "\n");
+
+    /* Stampa degli utenti terminati a causa delle molteplici transazioni fallite */
+    for (i = 0; i < cfg.SO_USERS_NUM; i++) {
+        if (usersPIDs[i].status == PROCESS_FINISHED_PREMATURELY) j++;
+    }
+    fprintf(stdout, "Numero di processi utente terminati prematuramente : %d\n\n", j);
+
+    /* Stampa del numero di blocchi nel libro mastro */
+    j = 0;
+    for (i = 0; i < SO_REGISTRY_SIZE; i++) {
+        if (libroMastro[i] != NULL) j++;
+    }
+    fprintf(stdout, "Numero di blocchi nel libro mastro: %d\n\n", j);
+
+    /* Stampa del numero di transazioni nella TP di ogni nodo */
+    fprintf(stdout, "Numero di transazioni presenti nella TP di ogni processo nodo:\n");
+    for (i = 0; i < cfg.SO_NODES_NUM; i++) {
+        fprintf(stdout, "       #%d, transactions = %d\n", nodePIDs[i].pid, nodePIDs[i].transactions);
+    }
 
     /* Cleanup prima di uscire: detach di tutte le shared memory, e impostazione dello stato del nostro processo */
     shmdt_error_checking(nodePIDs);

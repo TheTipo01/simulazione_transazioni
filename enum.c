@@ -9,6 +9,13 @@ enum semafori {
 enum process_status {
     PROCESS_RUNNING,
     PROCESS_WAITING,
-    PROCESS_FINISHED
+    PROCESS_FINISHED,
+    PROCESS_FINISHED_PREMATURELY
+};
+
+enum termination_reason {
+    TIMEDOUT,
+    LEDGERFULL,
+    FINISHED
 };
 #endif

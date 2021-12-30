@@ -33,10 +33,10 @@
 #define BLOCK_SENDER -1
 
 void startNode(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int semID,
-               int readCounterShID, unsigned int nodeIndex) {
+               int readCounterShID, unsigned int nodeIndex, int stopShID) {
     struct Transazione **trnsToProcess = malloc(SO_BLOCK_SIZE * sizeof(struct Transazione));
     struct Transazione **transactionPool = malloc(cfg.SO_TP_SIZE * sizeof(struct Transazione));
-    int sig, i = 0, j, k, last = 0, qID, sID;
+    int sig, i = 0, j, k, last = 0, qID, sID, *stop;
     unsigned int sum, *readerCounter;
     struct timespec *cur_time, wait_time;
     struct Transazione tmp;
@@ -56,6 +56,9 @@ void startNode(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
     /* Creo la coda con chiave PID del nodo */
     qID = msgget(getpid(), IPC_CREAT);
 
+    /* Booleano abbassato quando dobbiamo terminare i processi, per gracefully terminare tutto */
+    stop = shmat(stopShID, NULL, 0);
+
     /* Ci attacchiamo al libro mastro */
     libroMastro = shmat(ledgerShID, NULL, 0);
 
@@ -67,8 +70,7 @@ void startNode(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
      */
     sigwait(wset, &sig);
 
-    /* TODO: finire di fixare i messaggi */
-    while (1) {
+    while (*stop < 0) {
         while (transactionPool[i + SO_BLOCK_SIZE - 2] == NULL && last != cfg.SO_TP_SIZE) {
             msgrcv(qID, &tmp, sizeof(struct Transazione), 0, 0);
             transactionPool[last]->quantity = tmp.quantity * ((100 - tmp.reward) / 100);
@@ -86,18 +88,20 @@ void startNode(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
          * Passo successivo: creazione del blocco avente SO_BLOCK_SIZE-1 transazioni presenti nella TP.
          * Se però la TP è piena, la transazione viene scartata: si avvisa il sender
          */
+        msg = malloc(sizeof(struct Messaggio));
         if (last != cfg.SO_TP_SIZE) {
-            /* Transazione accettata: inviamo la transazione indietro */
+            /* Transazione accettata: inviamo la transazione indietro (= successo) */
             /* TODO: maybe smettere di leakare memoria, idk (però solo quando funziona tutto:tm:) */
-            msg = malloc(sizeof(struct Messaggio));
 
-            msg->m_type = 1;
+            msg->m_type = 0;
+            msg->transazione = tmp;
             msgsnd(sID, &msg, sizeof(struct Transazione), IPC_NOWAIT);
 
             /* Creazione blocco */
             j = 0;
             for (; i < cfg.SO_TP_SIZE && j < SO_BLOCK_SIZE - 1; i++) {
                 trnsToProcess[i] = transactionPool[i];
+                nodePIDs[nodeIndex].transactions++;
                 j++;
             }
             i += SO_BLOCK_SIZE;
@@ -125,26 +129,33 @@ void startNode(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
                     libroMastro[i] = *trnsToProcess;
                 }
             }
+            if (libroMastro[SO_REGISTRY_SIZE] != NULL) *stop = LEDGERFULL;
             sem_release(semID, LEDGER_WRITE);
+
+            /* Notifichiamo il processo dell'arrivo di una transazione */
+            kill(tmp.receiver, SIGUSR1);
 
             /* Allochiamo nuova memoria per le transazioni da processare */
             trnsToProcess = malloc(SO_BLOCK_SIZE * sizeof(struct Transazione));
         } else {
-            /* Notifichiamo l'utente, rinviandogli la transazione rifiutata */
-            msgsnd(sID, NULL, sizeof(struct Transazione), IPC_NOWAIT);
+            /* Notifichiamo l'utente, rinviandogli la transazione con uno dei campi non valido () */
+            msg->m_type = 0;
+            msg->transazione.sender = BLOCK_SENDER;
+            msgsnd(sID, &msg, sizeof(struct Transazione), IPC_NOWAIT);
         }
     }
 
     /* Cleanup prima di uscire */
 
+    /* Impostazione dello stato del nostro processo */
+    nodePIDs[nodeIndex].status = PROCESS_FINISHED;
+
     /* Detach di tutte le shared memory */
     shmdt_error_checking(nodePIDs);
     shmdt_error_checking(usersPIDs);
     shmdt_error_checking(libroMastro);
+    shmdt_error_checking(stop);
 
     /* Chiusura delle code di messaggi */
     msgctl(qID, IPC_RMID, NULL);
-
-    /* Impostazione dello stato del nostro processo */
-    nodePIDs[nodeIndex].status = PROCESS_FINISHED;
 }

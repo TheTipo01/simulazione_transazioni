@@ -35,6 +35,9 @@ typedef struct Processo {
 
     /* Bilancio del processo */
     unsigned int balance;
+
+    /* Numero di transazioni nella TP (USATO SOLO DAI NODES) */
+    int transactions;
 } Processo;
 
 #endif

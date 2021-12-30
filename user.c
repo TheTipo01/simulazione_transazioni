@@ -64,9 +64,9 @@ unsigned int calcEntrate(int semID, struct Transazione **lm, unsigned int *readC
 }
 
 void startUser(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int semID,
-               int readCounterShID, unsigned int userIndex) {
+               int readCounterShID, unsigned int userIndex, int stopShID) {
     struct timespec *my_time;
-    int sig, uID, nID;
+    int sig, uID, nID, *stop, j, k = 0;
     long msgType;
     struct Transazione **libroMastro;
     unsigned int *readerCounter;
@@ -91,11 +91,14 @@ void startUser(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
     /* Collegamento all'array dello stato dei processi nodo */
     nodePIDs = shmat(nodePIDsID, NULL, 0);
 
+    /* Booleano abbassato quando dobbiamo terminare i processi, per gracefully terminare tutto */
+    stop = shmat(stopShID, NULL, 0);
+
     /* Child aspettano un segnale dal parent: possono iniziare la loro funzione solo dopo che vengono generati
      * tutti gli altri child */
     sigwait(wset, &sig);
 
-    while (failedTransaction < cfg.SO_RETRY) {
+    while (failedTransaction < cfg.SO_RETRY && *stop < 0) {
         msg = malloc(sizeof(struct Messaggio));
 
         /* Calcolo del bilancio dell'utente: calcoliamo solo le entrate, in quanto le uscite vengono registrate dopo */
@@ -123,7 +126,7 @@ void startUser(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
 
             /* Aspetto il messaggio di successo/fallimento */
             msgrcv(uID, &msg_feedback, sizeof(struct Transazione), 0, 0);
-            if (msg_feedback == NULL) {
+            if (msg_feedback->sender == -1) {
                 /* Se la transazione fallisce, aumentiamo il contatore delle transazioni fallite di 1 */
                 failedTransaction++;
             } else {
@@ -134,27 +137,42 @@ void startUser(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
             my_time->tv_nsec =
                     rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
             nanosleep(my_time, NULL);
-
         } else {
             /* no more moners :( */
-            /* TODO: fare aspettare lo user finché il suo bilancio non è positivo, inviandogli un messaggio per risvegliarlo */
             my_time->tv_nsec =
                     rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) + cfg.SO_MIN_TRANS_GEN_NSEC;
             nanosleep(my_time, NULL);
+
+            /* Aspettiamo finchè l'utente non riceve una transazione */
+            sigwait(wset, &sig);
         }
     }
 
     /* Cleanup prima di uscire */
+
+    if (failedTransaction == 5) usersPIDs[userIndex].status = PROCESS_FINISHED;
+    else usersPIDs[userIndex].status = PROCESS_FINISHED_PREMATURELY;
+
+    /* Se non c'è stato un ordine di uscire, controlliamo se gli altri processi abbiano finito */
+    if (*stop < 0) {
+        /* Contiamo il numero di processi che non hanno finito */
+        for (j = 0; j < cfg.SO_USERS_NUM; j++) {
+            if (usersPIDs[i].status != PROCESS_FINISHED && usersPIDs[i].status != PROCESS_FINISHED_PREMATURELY) k++;
+        }
+
+        /* Se non ne esistono più, facciamo terminare i nodi. */
+        if (k == 0) {
+            *stop = FINISHED;
+        }
+    }
 
     /* Detach di tutte le shared memory */
     shmdt_error_checking(libroMastro);
     shmdt_error_checking(readerCounter);
     shmdt_error_checking(usersPIDs);
     shmdt_error_checking(nodePIDs);
+    shmdt_error_checking(stop);
 
     /* Chiusura delle code di messaggi utilizzate */
     msgctl(uID, IPC_RMID, NULL);
-
-    /* Impostazione dello stato del nostro processo */
-    usersPIDs[userIndex].status = PROCESS_FINISHED;
 }
