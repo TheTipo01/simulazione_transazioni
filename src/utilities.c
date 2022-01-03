@@ -2,7 +2,7 @@
 #define UTILITIES_C
 
 #include <sys/shm.h>
-#include "lib/libsem.c"
+#include "../vendor/libsem.c"
 
 void read_start(int sem_id, unsigned int *readCounter) {
     sem_reserve(sem_id, LEDGER_READ);

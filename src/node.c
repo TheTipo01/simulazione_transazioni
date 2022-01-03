@@ -23,18 +23,19 @@
 
 #include "config.c"
 #include "structure.h"
-#include "lib/libsem.c"
+#include "../vendor/libsem.c"
 #include "enum.c"
+#include "time.h"
 
 #include <signal.h>
+#include <stdlib.h>
 #include <sys/msg.h>
 #include <sys/shm.h>
 
 #define BLOCK_SENDER -1
 
-void startNode(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int semID,
+void startNode(Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int semID,
                int readCounterShID, unsigned int nodeIndex, int stopShID) {
-    struct Transazione **trnsToProcess = malloc(SO_BLOCK_SIZE * sizeof(struct Transazione));
     struct Transazione **transactionPool = malloc(cfg.SO_TP_SIZE * sizeof(struct Transazione));
     int sig, i = 0, j, k, last = 0, qID, sID, *stop;
     unsigned int sum, *readerCounter;
@@ -42,7 +43,8 @@ void startNode(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
     struct Transazione tmp;
     struct Transazione **libroMastro;
     Processo *nodePIDs, *usersPIDs;
-    struct Messaggio *msg;
+    struct Messaggio msg;
+    sigset_t wset;
 
     /* Buffer dell'output sul terminale impostato ad asincrono in modo da ricevere comunicazioni dai child */
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -64,11 +66,18 @@ void startNode(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
 
     readerCounter = shmat(readCounterShID, NULL, 0);
 
+    /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
+    sigemptyset(&wset);
+    sigaddset(&wset, SIGUSR1);
+
+    /* Mascheriamo i segnali che usiamo */
+    sigprocmask(SIG_BLOCK, &wset, NULL);
+
     /*
      * Child aspettano un segnale dal parent: possono iniziare la loro funzione solo dopo che vengono generati
      * tutti gli altri child
      */
-    sigwait(wset, &sig);
+    sigwait(&wset, &sig);
 
     while (*stop < 0) {
         while (transactionPool[i + SO_BLOCK_SIZE - 2] == NULL && last != cfg.SO_TP_SIZE) {
@@ -88,34 +97,25 @@ void startNode(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
          * Passo successivo: creazione del blocco avente SO_BLOCK_SIZE-1 transazioni presenti nella TP.
          * Se però la TP è piena, la transazione viene scartata: si avvisa il sender
          */
-        msg = malloc(sizeof(struct Messaggio));
         if (last != cfg.SO_TP_SIZE) {
             /* Transazione accettata: inviamo la transazione indietro (= successo) */
-            /* TODO: maybe smettere di leakare memoria, idk (però solo quando funziona tutto:tm:) */
+            /* TODO: maybe smettere di leakare memoria, idk (però solo quando funziona tutto™) */
 
-            msg->m_type = 0;
-            msg->transazione = tmp;
+            msg.m_type = 0;
+            msg.transazione = tmp;
             msgsnd(sID, &msg, sizeof(struct Transazione), IPC_NOWAIT);
-
-            /* Creazione blocco */
-            j = 0;
-            for (; i < cfg.SO_TP_SIZE && j < SO_BLOCK_SIZE - 1; i++) {
-                trnsToProcess[i] = transactionPool[i];
-                nodePIDs[nodeIndex].transactions++;
-                j++;
-            }
-            i += SO_BLOCK_SIZE;
+            /* free(msg); */
 
             /* Popolazione blocco */
             clock_gettime(CLOCK_REALTIME, cur_time);
-            trnsToProcess[SO_BLOCK_SIZE - 1]->timestamp = *cur_time;
-            trnsToProcess[SO_BLOCK_SIZE - 1]->sender = BLOCK_SENDER;
-            trnsToProcess[SO_BLOCK_SIZE - 1]->receiver = getpid();
-            trnsToProcess[SO_BLOCK_SIZE - 1]->reward = 0;
+            transactionPool[SO_BLOCK_SIZE - 1]->timestamp = *cur_time;
+            transactionPool[SO_BLOCK_SIZE - 1]->sender = BLOCK_SENDER;
+            transactionPool[SO_BLOCK_SIZE - 1]->receiver = getpid();
+            transactionPool[SO_BLOCK_SIZE - 1]->reward = 0;
             for (i = 0; i < SO_BLOCK_SIZE - 1; i++) {
-                sum += trnsToProcess[i]->quantity;
+                sum += transactionPool[i]->quantity;
             }
-            trnsToProcess[SO_BLOCK_SIZE - 1]->quantity = sum;
+            transactionPool[SO_BLOCK_SIZE - 1]->quantity = sum;
 
             /* Simulazione elaborazione del blocco */
             wait_time.tv_nsec =
@@ -123,10 +123,11 @@ void startNode(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
             nanosleep(&wait_time, NULL);
 
             /* Scrittura in libro mastro con sincronizzazione (semaforo) */
+            /* Can we have a non-blockin */
             sem_reserve(semID, LEDGER_WRITE);
             for (k = 0; k < SO_REGISTRY_SIZE; k++) {
-                if (libroMastro[i] == NULL) {
-                    libroMastro[i] = *trnsToProcess;
+                if (libroMastro[k] == NULL) {
+                    libroMastro[k] = *transactionPool;
                 }
             }
             if (libroMastro[SO_REGISTRY_SIZE] != NULL) *stop = LEDGERFULL;
@@ -134,13 +135,10 @@ void startNode(sigset_t *wset, Config cfg, int ledgerShID, int nodePIDsID, int u
 
             /* Notifichiamo il processo dell'arrivo di una transazione */
             kill(tmp.receiver, SIGUSR1);
-
-            /* Allochiamo nuova memoria per le transazioni da processare */
-            trnsToProcess = malloc(SO_BLOCK_SIZE * sizeof(struct Transazione));
         } else {
             /* Notifichiamo l'utente, rinviandogli la transazione con uno dei campi non valido () */
-            msg->m_type = 0;
-            msg->transazione.sender = BLOCK_SENDER;
+            msg.m_type = 0;
+            msg.transazione.sender = BLOCK_SENDER;
             msgsnd(sID, &msg, sizeof(struct Transazione), IPC_NOWAIT);
         }
     }

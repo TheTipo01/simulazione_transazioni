@@ -4,7 +4,7 @@
 #include "user.c"
 #include "node.c"
 #include "structure.h"
-#include "lib/libsem.c"
+#include "../vendor/libsem.c"
 #include "utilities.c"
 
 #include <stdio.h>
@@ -44,7 +44,7 @@ int main(int argc, char *argv[]) {
 
     /* Allocazione memoria per il libro mastro */
     ledgerShID = shmget(IPC_PRIVATE,
-                        (SO_REGISTRY_SIZE * sizeof(struct Transazione)) * (SO_BLOCK_SIZE * sizeof(struct Transazione)),
+                        SO_REGISTRY_SIZE * (SO_BLOCK_SIZE * sizeof(struct Transazione)),
                         S_IRUSR | S_IWUSR);
     if (ledgerShID == -1) {
         fprintf(stderr, "%s: %d. Errore in semget #%03d: %s\n", __FILE__, __LINE__, errno, strerror(errno));
@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
             case -1:
                 exit(EXIT_FAILURE);
             case 0:
-                startNode(&wset, cfg, ledgerShID, nodePIDsID, usersPIDsID, semID, readCounterShID, i, stopShID);
+                startNode(cfg, ledgerShID, nodePIDsID, usersPIDsID, semID, readCounterShID, i, stopShID);
                 return 0;
             default:
                 nodePIDs[i].pid = currentPid;
@@ -129,7 +129,7 @@ int main(int argc, char *argv[]) {
             case -1:
                 exit(EXIT_FAILURE);
             case 0:
-                startUser(&wset, cfg, ledgerShID, nodePIDsID, usersPIDsID, semID, readCounterShID, i, stopShID);
+                startUser(cfg, ledgerShID, nodePIDsID, usersPIDsID, semID, readCounterShID, i, stopShID);
                 exit(0);
             default:
                 usersPIDs[i].pid = currentPid;

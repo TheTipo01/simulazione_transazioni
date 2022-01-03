@@ -2,6 +2,8 @@
 #ifndef STRUCTURE_H
 #define STRUCTURE_H
 
+#include "time.h"
+
 struct Transazione {
     /* Timestamp della transazione con risoluzione dei nanosecondi
         (vedere funzione clock_gettime()) */
