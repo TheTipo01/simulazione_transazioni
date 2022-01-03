@@ -42,4 +42,13 @@ typedef struct Processo {
     int transactions;
 } Processo;
 
+struct SharedMemoryID {
+    int ledger;
+    int nodePIDs;
+    int usersPIDs;
+    int readCounter;
+    int stop;
+    int sem;
+};
+
 #endif

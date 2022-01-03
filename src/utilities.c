@@ -2,6 +2,7 @@
 #define UTILITIES_C
 
 #include <sys/shm.h>
+#include <errno.h>
 #include "../vendor/libsem.c"
 
 void read_start(int sem_id, unsigned int *readCounter) {

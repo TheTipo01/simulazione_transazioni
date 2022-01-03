@@ -1,32 +1,6 @@
-/*
- * I processi utente si occupano di creare e inviare transazioni ai processi nodo.
- *
- * Ogni processo utente inizia con SO_BUDGET_INIT, e dovrà:
- *     - Calcolare il bilancio, facendo la somma algebrica delle entrate e delle uscite che abbiamo fatto, ancor prima di
- *       essere registrate nel libro mastro
- *           - Se questo bilancio è >= 2, il processo farà le seguenti operazioni:
- *                - Sceglie un processo utente a cui inviare il denaro
- *                - Sceglie un nodo a cui inviare la transazione da processare
- *                - Sceglie un valore intero compreso tra 2 e il suo budget, suddiviso in questa maniera
- *                     * Il reward, una percentuale di SO_REWARD, arrotondato ad un minimo di 1
- *                     * L'importo della transazione, quindi il valore scelto prima - reward
- *           - Se il bilancio è minore di 2, allora il processo non invia alcuna transazione
- *     - Invia al nodo scelto la transazione, e attende un intervallo di tempo tra SO_MIN_TRANS_GEN_NSEC e SO_MAX_TRANS_GEN_NSEC
- *
- * Dovrà anche gestire un segnale per generare una transazione (segnale da scegliere) --> usare un handler
- *
- * Funzione transaction inviata da utente a nodo, deve avere:
- *      timestamp
- *      sender
- *      receiver
- *      quantità
- *      reward
- *  e deve essere memorizzata con questi parametri sul libro mastro.
- */
-
 #include "config.c"
 #include "enum.c"
-#include "../vendor/libsem.c"
+#include "../vendor/libsem.h"
 #include "structure.h"
 #include "utilities.c"
 
@@ -36,7 +10,7 @@
 #include <time.h>
 #include <unistd.h>
 
-int i = 0;
+int lastBlockChecked = 0;
 
 unsigned int calcEntrate(int semID, struct Transazione **lm, unsigned int *readCounter) {
     int pid = getpid(), j;
@@ -48,13 +22,13 @@ unsigned int calcEntrate(int semID, struct Transazione **lm, unsigned int *readC
 
     /* Cicliamo all'interno del libro mastro per controllare ogni transazione
      * eseguita */
-    for (; i < SO_REGISTRY_SIZE && lm[i] != NULL; i++) {
+    for (; lastBlockChecked < SO_REGISTRY_SIZE && lm[lastBlockChecked] != NULL; lastBlockChecked++) {
         /* Se in posizione i c'è un blocco, controlliamo il contenuto */
         for (j = 0; j < SO_BLOCK_SIZE; j++) {
             /* Se nella transazione il ricevente è l'utente stesso, allora
              * aggiungiamo al bilancio la quantità della transazione */
-            if (lm[i][j].receiver == pid) {
-                tmpBalance += lm[i][j].quantity;
+            if (lm[lastBlockChecked][j].receiver == pid) {
+                tmpBalance += lm[lastBlockChecked][j].quantity;
             }
         }
     }
@@ -65,8 +39,7 @@ unsigned int calcEntrate(int semID, struct Transazione **lm, unsigned int *readC
     return tmpBalance;
 }
 
-void startUser(Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int semID, int readCounterShID,
-               unsigned int userIndex, int stopShID) {
+void startUser(Config cfg, struct SharedMemoryID ids, unsigned int index) {
     struct timespec *my_time;
     int sig, uID, nID, *stop, j, k = 0, failedTransaction = 0;
     struct Transazione **libroMastro;
@@ -81,23 +54,23 @@ void startUser(Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int 
     setvbuf(stdout, NULL, _IONBF, 0);
 
     /* Collegamento del libro mastro */
-    libroMastro = shmat(ledgerShID, NULL, 0);
+    libroMastro = shmat(ids.ledger, NULL, 0);
 
-    readerCounter = shmat(readCounterShID, NULL, 0);
+    readerCounter = shmat(ids.readCounter, NULL, 0);
 
     /* Creo la coda con chiave PID dell'utente */
     uID = msgget(getpid(), IPC_CREAT);
 
     /* Collegamento all'array dello stato dei processi utente */
-    usersPIDs = shmat(usersPIDsID, NULL, 0);
+    usersPIDs = shmat(ids.usersPIDs, NULL, 0);
 
     /* Collegamento all'array dello stato dei processi nodo */
-    nodePIDs = shmat(nodePIDsID, NULL, 0);
+    nodePIDs = shmat(ids.nodePIDs, NULL, 0);
 
     /* Booleano abbassato quando dobbiamo terminare i processi, per gracefully
      * terminare tutto
      */
-    stop = shmat(stopShID, NULL, 0);
+    stop = shmat(ids.stop, NULL, 0);
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
@@ -116,10 +89,10 @@ void startUser(Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int 
     while (failedTransaction < cfg.SO_RETRY && *stop < 0) {
         /* Calcolo del bilancio dell'utente: calcoliamo solo le entrate, in quanto
          * le uscite vengono registrate dopo */
-        usersPIDs[userIndex].balance +=
-                calcEntrate(semID, libroMastro, readerCounter);
+        usersPIDs[index].balance +=
+                calcEntrate(ids.sem, libroMastro, readerCounter);
 
-        if (usersPIDs[userIndex].balance >= 2) {
+        if (usersPIDs[index].balance >= 2) {
             pid_t receiverPID = usersPIDs[rand() % cfg.SO_USERS_NUM].pid;
             pid_t targetNodePID = nodePIDs[rand() % cfg.SO_NODES_NUM].pid;
 
@@ -150,7 +123,7 @@ void startUser(Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int 
             } else {
                 /* Se la transazione ha avuto successo, aggiorniamo il bilancio con
                  * l'uscita appena effettuata */
-                usersPIDs[userIndex].balance -=
+                usersPIDs[index].balance -=
                         (unsigned int) (msg.transazione.quantity * ((float) (100 - msg.transazione.reward) / 100.0));
             }
 
@@ -173,17 +146,17 @@ void startUser(Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int 
     /* Cleanup prima di uscire */
 
     if (failedTransaction == 5)
-        usersPIDs[userIndex].status = PROCESS_FINISHED;
+        usersPIDs[index].status = PROCESS_FINISHED;
     else
-        usersPIDs[userIndex].status = PROCESS_FINISHED_PREMATURELY;
+        usersPIDs[index].status = PROCESS_FINISHED_PREMATURELY;
 
     /* Se non c'è stato un ordine di uscire, controlliamo se gli altri processi
      * abbiano finito */
     if (*stop < 0) {
         /* Contiamo il numero di processi che non hanno finito */
         for (j = 0; j < cfg.SO_USERS_NUM; j++) {
-            if (usersPIDs[i].status != PROCESS_FINISHED &&
-                usersPIDs[i].status != PROCESS_FINISHED_PREMATURELY)
+            if (usersPIDs[j].status != PROCESS_FINISHED &&
+                usersPIDs[j].status != PROCESS_FINISHED_PREMATURELY)
                 k++;
         }
 

@@ -1,29 +1,6 @@
-/*
- * Memorizza privatamente la lista di transazioni sulla transaction pool
- * di grandezza SO_TP_SIZE (> SO_BLOCK_SIZE)
- *
- * Se TP piena, viene scartata, e user avvisa master di ciò
- *
- * SO_BLOCK_SIZE-1 transazioni processate a blocchi di grandezza SO_BLOCK_SIZE
- *
- * Creazione di un blocco:
- *      - estrazione dalla TP SO_BLOCK_SIZE_-1 trans. non ancora presenti nel libro mastro;
- *      - aggiungere transazione finale di reward con seguenti caratteristiche:
- *           timestamp: clock_gettime()
- *           sender: -1 (con macro)
- *           receiver: id nodo corrente
- *           quantità: somma di tutti i reward delle transazioni nel blocco
- *           reward: 0
- *
- * Elaborazione del blocco attraverso attesa non attiva di un intervallo temporale
- * espresso in nanosec. [SO_MIN_TRANS_PROC_NSEC, SO_MAX_TRANS_PROC_NSEC]
- *
- * Quando trans. elaborata, scrive il nuovo blocco nel libro mastro e pulisce TP
- */
-
 #include "config.c"
 #include "structure.h"
-#include "../vendor/libsem.c"
+#include "../vendor/libsem.h"
 #include "enum.c"
 #include "time.h"
 
@@ -34,8 +11,7 @@
 
 #define BLOCK_SENDER -1
 
-void startNode(Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int semID,
-               int readCounterShID, unsigned int nodeIndex, int stopShID) {
+void startNode(Config cfg, struct SharedMemoryID ids, unsigned int index) {
     struct Transazione **transactionPool = malloc(cfg.SO_TP_SIZE * sizeof(struct Transazione));
     int sig, i = 0, j, k, last = 0, qID, sID, *stop;
     unsigned int sum, *readerCounter;
@@ -50,21 +26,21 @@ void startNode(Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int 
     setvbuf(stdout, NULL, _IONBF, 0);
 
     /* Collegamento all'array dello stato dei processi utente */
-    usersPIDs = shmat(usersPIDsID, NULL, 0);
+    usersPIDs = shmat(ids.usersPIDs, NULL, 0);
 
     /* Collegamento all'array dello stato dei processi nodo */
-    nodePIDs = shmat(nodePIDsID, NULL, 0);
+    nodePIDs = shmat(ids.nodePIDs, NULL, 0);
 
     /* Creo la coda con chiave PID del nodo */
     qID = msgget(getpid(), IPC_CREAT);
 
     /* Booleano abbassato quando dobbiamo terminare i processi, per gracefully terminare tutto */
-    stop = shmat(stopShID, NULL, 0);
+    stop = shmat(ids.stop, NULL, 0);
 
     /* Ci attacchiamo al libro mastro */
-    libroMastro = shmat(ledgerShID, NULL, 0);
+    libroMastro = shmat(ids.ledger, NULL, 0);
 
-    readerCounter = shmat(readCounterShID, NULL, 0);
+    readerCounter = shmat(ids.readCounter, NULL, 0);
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
@@ -87,7 +63,7 @@ void startNode(Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int 
             transactionPool[last]->sender = tmp.sender;
             transactionPool[last]->receiver = tmp.receiver;
             transactionPool[last]->timestamp = tmp.timestamp;
-            nodePIDs[nodeIndex].balance += tmp.quantity * (tmp.reward / 100);
+            nodePIDs[index].balance += tmp.quantity * (tmp.reward / 100);
             last++;
         }
 
@@ -124,14 +100,14 @@ void startNode(Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int 
 
             /* Scrittura in libro mastro con sincronizzazione (semaforo) */
             /* Can we have a non-blockin */
-            sem_reserve(semID, LEDGER_WRITE);
+            sem_reserve(ids.sem, LEDGER_WRITE);
             for (k = 0; k < SO_REGISTRY_SIZE; k++) {
                 if (libroMastro[k] == NULL) {
                     libroMastro[k] = *transactionPool;
                 }
             }
             if (libroMastro[SO_REGISTRY_SIZE] != NULL) *stop = LEDGERFULL;
-            sem_release(semID, LEDGER_WRITE);
+            sem_release(ids.sem, LEDGER_WRITE);
 
             /* Notifichiamo il processo dell'arrivo di una transazione */
             kill(tmp.receiver, SIGUSR1);
@@ -146,7 +122,7 @@ void startNode(Config cfg, int ledgerShID, int nodePIDsID, int usersPIDsID, int 
     /* Cleanup prima di uscire */
 
     /* Impostazione dello stato del nostro processo */
-    nodePIDs[nodeIndex].status = PROCESS_FINISHED;
+    nodePIDs[index].status = PROCESS_FINISHED;
 
     /* Detach di tutte le shared memory */
     shmdt_error_checking(nodePIDs);

@@ -9,7 +9,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-
+#include "libsem.c"
 
 /*
  * The following union must be defined as required by the semctl man

@@ -1,8 +1,8 @@
 #define _GNU_SOURCE
 
 #include "config.c"
-#include "user.c"
-#include "node.c"
+#include "user.h"
+#include "node.h"
 #include "structure.h"
 #include "../vendor/libsem.c"
 #include "utilities.c"
@@ -30,10 +30,11 @@
 int main(int argc, char *argv[]) {
     Config cfg = newConfig();
     unsigned int *readerCounter, execTime = 0;
-    int i, j = 0, currentPid, ledgerShID, readCounterShID, status, semID, nodePIDsID, usersPIDsID, stopShID, *stop;
+    int i, j = 0, currentPid, status, *stop;
     sigset_t wset;
     struct timespec *delay;
     struct Transazione **libroMastro;
+    struct SharedMemoryID ids;
     Processo *nodePIDs, *usersPIDs;
 
     /* Disattiviamo il buffering */
@@ -43,38 +44,38 @@ int main(int argc, char *argv[]) {
     srand(time(NULL));
 
     /* Allocazione memoria per il libro mastro */
-    ledgerShID = shmget(IPC_PRIVATE,
+    ids.ledger = shmget(IPC_PRIVATE,
                         SO_REGISTRY_SIZE * (SO_BLOCK_SIZE * sizeof(struct Transazione)),
                         S_IRUSR | S_IWUSR);
-    if (ledgerShID == -1) {
+    if (ids.ledger == -1) {
         fprintf(stderr, "%s: %d. Errore in semget #%03d: %s\n", __FILE__, __LINE__, errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
 
     /* Allocazione del semaforo di lettura come variabile in memoria condivisa */
-    readCounterShID = shmget(IPC_PRIVATE, sizeof(unsigned int), S_IRUSR | S_IWUSR);
-    if (readCounterShID == -1) {
+    ids.readCounter = shmget(IPC_PRIVATE, sizeof(unsigned int), S_IRUSR | S_IWUSR);
+    if (ids.readCounter == -1) {
         fprintf(stderr, "%s: %d. Errore in semget #%03d: %s\n", __FILE__, __LINE__, errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
 
     /* Allocazione dell'array dello stato dei nodi */
-    nodePIDsID = shmget(IPC_PRIVATE, cfg.SO_NODES_NUM * sizeof(int), S_IRUSR | S_IWUSR);
-    if (nodePIDsID == -1) {
+    ids.nodePIDs = shmget(IPC_PRIVATE, cfg.SO_NODES_NUM * sizeof(int), S_IRUSR | S_IWUSR);
+    if (ids.nodePIDs == -1) {
         fprintf(stderr, "%s: %d. Errore in semget #%03d: %s\n", __FILE__, __LINE__, errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
 
     /* Allocazione dell'array dello stato dei nodi */
-    usersPIDsID = shmget(IPC_PRIVATE, cfg.SO_USERS_NUM * sizeof(int), S_IRUSR | S_IWUSR);
-    if (usersPIDsID == -1) {
+    ids.usersPIDs = shmget(IPC_PRIVATE, cfg.SO_USERS_NUM * sizeof(int), S_IRUSR | S_IWUSR);
+    if (ids.usersPIDs == -1) {
         fprintf(stderr, "%s: %d. Errore in semget #%03d: %s\n", __FILE__, __LINE__, errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
 
     /* Allocazione del flag per far terminare correttamente i processi */
-    stopShID = shmget(IPC_PRIVATE, sizeof(int), S_IRUSR | S_IWUSR);
-    if (stopShID == -1) {
+    ids.stop = shmget(IPC_PRIVATE, sizeof(int), S_IRUSR | S_IWUSR);
+    if (ids.stop == -1) {
         fprintf(stderr, "%s: %d. Errore in semget #%03d: %s\n", __FILE__, __LINE__, errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
@@ -87,22 +88,24 @@ int main(int argc, char *argv[]) {
     sigprocmask(SIG_BLOCK, &wset, NULL);
 
     /* Inizializziamo i semafori che usiamo */
-    semID = semget(IPC_PRIVATE, FINE_SEMAFORI, IPC_CREAT);
+    ids.sem = semget(IPC_PRIVATE, FINE_SEMAFORI, IPC_CREAT);
 
     /* Inizializziamo il semaforo di lettura a 0 */
-    readerCounter = shmat(readCounterShID, NULL, 0);
+    readerCounter = shmat(ids.readCounter, NULL, 0);
     *readerCounter = 0;
-    shmdt_error_checking(&readCounterShID);
+    shmdt_error_checking(&ids.readCounter);
 
     /* Inizializziamo il flag di terminazione a 1 (verrà abbassato quando tutti i processi devono terminare) */
-    stop = shmat(stopShID, NULL, 0);
+    stop = shmat(ids.stop, NULL, 0);
     *stop = -1;
 
     /* Collegamento del libro mastro (ci serve per controllo dati) */
-    libroMastro = shmat(ledgerShID, NULL, 0);
+    libroMastro = shmat(ids.ledger, NULL, 0);
 
     /* Collegamento all'array dello stato dei processi */
-    nodePIDs = shmat(nodePIDsID, NULL, 0);
+    nodePIDs = shmat(ids.nodePIDs, NULL, 0);
+
+
 
     /* Avviamo i processi node */
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
@@ -110,8 +113,8 @@ int main(int argc, char *argv[]) {
             case -1:
                 exit(EXIT_FAILURE);
             case 0:
-                startNode(cfg, ledgerShID, nodePIDsID, usersPIDsID, semID, readCounterShID, i, stopShID);
-                return 0;
+                startNode(cfg, ids, i);
+                exit(0);
             default:
                 nodePIDs[i].pid = currentPid;
                 nodePIDs[i].balance = 0;
@@ -121,7 +124,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* Collegamento all'array dello stato dei processi utente */
-    usersPIDs = shmat(usersPIDsID, NULL, 0);
+    usersPIDs = shmat(ids.usersPIDs, NULL, 0);
 
     /* Avviamo i processi user */
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
@@ -129,7 +132,7 @@ int main(int argc, char *argv[]) {
             case -1:
                 exit(EXIT_FAILURE);
             case 0:
-                startUser(cfg, ledgerShID, nodePIDsID, usersPIDsID, semID, readCounterShID, i, stopShID);
+                startUser(cfg, ids, i);
                 exit(0);
             default:
                 usersPIDs[i].pid = currentPid;
@@ -148,7 +151,7 @@ int main(int argc, char *argv[]) {
      */
     delay->tv_nsec = 1000000000;
     if (!fork()) {
-        stop = shmat(stopShID, NULL, 0);
+        stop = shmat(ids.stop, NULL, 0);
         while (execTime < cfg.SO_SIM_SEC && *stop < -1) {
             printStatus(nodePIDs, usersPIDs, &cfg);
             nanosleep(delay, NULL);
