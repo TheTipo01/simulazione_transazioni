@@ -51,4 +51,13 @@ struct SharedMemoryID {
     int sem;
 };
 
+struct SharedMemory {
+    struct Transazione **libroMastro;
+    unsigned int *readerCounter;
+    int uID;
+    Processo *usersPIDs;
+    Processo *nodePIDs;
+    int *stop;
+};
+
 #endif

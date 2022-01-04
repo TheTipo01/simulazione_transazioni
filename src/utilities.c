@@ -3,7 +3,8 @@
 
 #include <sys/shm.h>
 #include <errno.h>
-#include "../vendor/libsem.c"
+#include "utilities.h"
+#include "../vendor/libsem.h"
 
 void read_start(int sem_id, unsigned int *readCounter) {
     sem_reserve(sem_id, LEDGER_READ);
@@ -25,9 +26,8 @@ void read_end(int sem_id, unsigned int *readCounter) {
     sem_release(sem_id, LEDGER_READ);
 }
 
-/* Stampa lo stato attuale dei processi utente e nodo */
 void printStatus(Processo *nodePIDs, Processo *usersPIDs, Config *cfg) {
-    int i, activeNodes, activeUsers, maxPid, minPid;
+    int i, activeNodes = 0, activeUsers = 0, maxPid, minPid;
     unsigned int maxBal, minBal;
     char *maxStat, *minStat;
 
@@ -106,10 +106,9 @@ void printStatus(Processo *nodePIDs, Processo *usersPIDs, Config *cfg) {
     fprintf(stdout, "Processo nodo con bilancio più basso: #%d, status = %s, balance = %d\n", minPid, minStat, minBal);
 }
 
-
-void shmdt_error_checking(const void *adrr) {
-    if (shmdt(adrr) == -1) {
-        fprintf(stderr, "%s: %d. Errore in shmdt #%03d: %s\n", __FILE__, __LINE__, errno, strerror(errno));
+void shmget_error_checking(int id) {
+    if (id == -1) {
+        fprintf(stderr, "%s: %d. Errore in semget #%03d: %s\n", __FILE__, __LINE__, errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
 }

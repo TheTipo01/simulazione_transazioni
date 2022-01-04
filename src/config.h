@@ -44,5 +44,7 @@ typedef struct Config {
     int SO_HOPS;
 } Config;
 
+#include "config.c"
+
 #endif
 

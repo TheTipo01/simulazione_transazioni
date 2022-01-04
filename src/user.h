@@ -18,4 +18,10 @@ unsigned int calcEntrate(int semID, struct Transazione **lm, unsigned int *readC
  * PID nella lista condivisa dei PID dei processi utente. */
 void startUser(Config cfg, struct SharedMemoryID ids, unsigned int index);
 
+/*
+ * Questa funzione è incaricata di generare le transazioni. Viene usata nel ciclo del processo utente, e come signal
+ * handler per generarne una sul segnale SIGUSR2
+ */
+void transactionGenerator(int signal);
+
 #endif

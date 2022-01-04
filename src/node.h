@@ -9,6 +9,6 @@
  * al libro mastro) in blocco.
  * Oltre ai valori di configurazione, ha bisogno degli ID per accedere alle memorie condivise, e un puntatore al proprio
  * PID nella lista condivisa dei PID dei processi nodo. */
-void startNode(Config cfg, struct SharedMemoryID ids, unsigned int index);
+void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position);
 
 #endif

@@ -1,4 +1,4 @@
-#include "config.c"
+#include "config.h"
 #include "structure.h"
 #include "../vendor/libsem.h"
 #include "enum.c"
@@ -11,7 +11,7 @@
 
 #define BLOCK_SENDER -1
 
-void startNode(Config cfg, struct SharedMemoryID ids, unsigned int index) {
+void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
     struct Transazione **transactionPool = malloc(cfg.SO_TP_SIZE * sizeof(struct Transazione));
     int sig, i = 0, j, k, last = 0, qID, sID, *stop;
     unsigned int sum, *readerCounter;
@@ -21,9 +21,6 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int index) {
     Processo *nodePIDs, *usersPIDs;
     struct Messaggio msg;
     sigset_t wset;
-
-    /* Buffer dell'output sul terminale impostato ad asincrono in modo da ricevere comunicazioni dai child */
-    setvbuf(stdout, NULL, _IONBF, 0);
 
     /* Collegamento all'array dello stato dei processi utente */
     usersPIDs = shmat(ids.usersPIDs, NULL, 0);
@@ -63,7 +60,7 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int index) {
             transactionPool[last]->sender = tmp.sender;
             transactionPool[last]->receiver = tmp.receiver;
             transactionPool[last]->timestamp = tmp.timestamp;
-            nodePIDs[index].balance += tmp.quantity * (tmp.reward / 100);
+            nodePIDs[position].balance += tmp.quantity * (tmp.reward / 100);
             last++;
         }
 
@@ -122,13 +119,13 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int index) {
     /* Cleanup prima di uscire */
 
     /* Impostazione dello stato del nostro processo */
-    nodePIDs[index].status = PROCESS_FINISHED;
+    nodePIDs[position].status = PROCESS_FINISHED;
 
     /* Detach di tutte le shared memory */
-    shmdt_error_checking(nodePIDs);
-    shmdt_error_checking(usersPIDs);
-    shmdt_error_checking(libroMastro);
-    shmdt_error_checking(stop);
+    shmdt_error_checking(&nodePIDs);
+    shmdt_error_checking(&usersPIDs);
+    shmdt_error_checking(&libroMastro);
+    shmdt_error_checking(&stop);
 
     /* Chiusura delle code di messaggi */
     msgctl(qID, IPC_RMID, NULL);
