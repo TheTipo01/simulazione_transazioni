@@ -33,6 +33,7 @@ void printStatus(Processo *nodePIDs, Processo *usersPIDs, Config *cfg) {
 
     setvbuf(stdout, NULL, _IONBF, 0);
 
+    fprintf(stdout, "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
     maxBal = 0;
     minBal = cfg->SO_BUDGET_INIT;
     for (i = 0; i < cfg->SO_USERS_NUM; i++) {
@@ -103,7 +104,8 @@ void printStatus(Processo *nodePIDs, Processo *usersPIDs, Config *cfg) {
     }
     fprintf(stdout, "\nNumero di processi nodo attivi: %d\n", activeNodes);
     fprintf(stdout, "Processo nodo con bilancio più alto: #%d, status = %s, balance = %d\n", maxPid, maxStat, maxBal);
-    fprintf(stdout, "Processo nodo con bilancio più basso: #%d, status = %s, balance = %d\n", minPid, minStat, minBal);
+    fprintf(stdout, "Processo nodo con bilancio più basso: #%d, status = %s, balance = %d\n\n", minPid, minStat,
+            minBal);
 }
 
 void shmget_error_checking(int id) {

@@ -39,24 +39,23 @@ int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IONBF, 0);
 
     /* Allocazione memoria per il libro mastro */
-    ids.ledger = shmget(IPC_PRIVATE, SO_REGISTRY_SIZE * sizeof(Blocco),
-                        S_IRUSR | S_IWUSR);
+    ids.ledger = shmget(IPC_PRIVATE, SO_REGISTRY_SIZE * sizeof(Blocco), 0666);
     shmget_error_checking(ids.ledger);
 
     /* Allocazione del semaforo di lettura come variabile in memoria condivisa */
-    ids.readCounter = shmget(IPC_PRIVATE, sizeof(unsigned int), S_IRUSR | S_IWUSR);
+    ids.readCounter = shmget(IPC_PRIVATE, sizeof(unsigned int), 0666);
     shmget_error_checking(ids.readCounter);
 
     /* Allocazione dell'array dello stato dei nodi */
-    ids.nodePIDs = shmget(IPC_PRIVATE, cfg.SO_NODES_NUM * sizeof(int), S_IRUSR | S_IWUSR);
+    ids.nodePIDs = shmget(IPC_PRIVATE, cfg.SO_NODES_NUM * sizeof(int), 0666);
     shmget_error_checking(ids.nodePIDs);
 
     /* Allocazione dell'array dello stato dei nodi */
-    ids.usersPIDs = shmget(IPC_PRIVATE, cfg.SO_USERS_NUM * sizeof(int), S_IRUSR | S_IWUSR);
+    ids.usersPIDs = shmget(IPC_PRIVATE, cfg.SO_USERS_NUM * sizeof(int), 0666);
     shmget_error_checking(ids.usersPIDs);
 
     /* Allocazione del flag per far terminare correttamente i processi */
-    ids.stop = shmget(IPC_PRIVATE, sizeof(int), S_IRUSR | S_IWUSR);
+    ids.stop = shmget(IPC_PRIVATE, sizeof(int), 0666);
     shmget_error_checking(ids.stop);
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
@@ -67,7 +66,7 @@ int main(int argc, char *argv[]) {
     sigprocmask(SIG_BLOCK, &wset, NULL);
 
     /* Inizializziamo i semafori che usiamo */
-    ids.sem = semget(IPC_PRIVATE, FINE_SEMAFORI + cfg.SO_USERS_NUM, IPC_CREAT);
+    ids.sem = semget(IPC_PRIVATE, FINE_SEMAFORI + cfg.SO_USERS_NUM, IPC_CREAT | 0666);
 
     /* Inizializziamo il semaforo di lettura a 0 */
     readerCounter = shmat(ids.readCounter, NULL, 0);

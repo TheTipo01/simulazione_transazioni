@@ -53,7 +53,8 @@ void transactionGenerator(int signal) {
     pid_t targetNodePID = sh.nodePIDs[rand() % cfg.SO_NODES_NUM].pid;
 
     /* Creazione coda di messaggi del nodo scelto come target */
-    nID = msgget(targetNodePID, IPC_CREAT);
+    nID = msgget(targetNodePID, IPC_CREAT | 0666);
+    TEST_ERROR;
 
     msg.transazione.sender = getpid();
     msg.transazione.receiver = receiverPID;
@@ -98,22 +99,28 @@ void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclInde
 
     /* Collegamento del libro mastro */
     sh.libroMastro = shmat(ids.ledger, NULL, 0);
+    TEST_ERROR;
 
     sh.readerCounter = shmat(ids.readCounter, NULL, 0);
+    TEST_ERROR;
 
     /* Creo la coda con chiave PID dell'utente */
-    uID = msgget(getpid(), IPC_CREAT);
+    uID = msgget(getpid(), IPC_CREAT | 0666);
+    msgget_error_checking(uID);
 
     /* Collegamento all'array dello stato dei processi utente */
     sh.usersPIDs = shmat(ids.usersPIDs, NULL, 0);
+    TEST_ERROR;
 
     /* Collegamento all'array dello stato dei processi nodo */
     sh.nodePIDs = shmat(ids.nodePIDs, NULL, 0);
+    TEST_ERROR;
 
     /* Booleano abbassato quando dobbiamo terminare i processi, per gracefully
      * terminare tutto
      */
     sh.stop = shmat(ids.stop, NULL, 0);
+    TEST_ERROR;
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);

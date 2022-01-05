@@ -30,6 +30,23 @@ void printStatus(Processo *nodePIDs, Processo *usersPIDs, Config *cfg);
         } \
         } while(0)
 
+#define msgget_error_checking(addr) do \
+        {                              \
+        if ((addr) < 0) \
+        { \
+            fprintf(stderr, "%s: %d. Errore in shmdt #%03d: %s\n", __FILE__, __LINE__, errno, strerror(errno)); \
+            exit(EXIT_FAILURE); \
+        } \
+        } while(0)
+
+#define TEST_ERROR do \
+        {                      \
+        if (errno)    \
+        { \
+            fprintf(stderr, "%s:%d: PID=%5d: Error %d (%s)\n", __FILE__, __LINE__, getpid(), errno,strerror(errno)); \
+        } \
+        } while (0)
+
 /* Funzione per il controllo dell'assegnazione della memoria condivida. Se l'address ritornato dalla funzione shmget
  * è uguale a -1, si esce dal programma segnalando l'errore.*/
 void shmget_error_checking(int id);

@@ -40,20 +40,26 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
 
     /* Collegamento all'array dello stato dei processi utente */
     sh.usersPIDs = shmat(ids.usersPIDs, NULL, 0);
+    TEST_ERROR;
 
     /* Collegamento all'array dello stato dei processi nodo */
     sh.nodePIDs = shmat(ids.nodePIDs, NULL, 0);
+    TEST_ERROR;
 
     /* Creo la coda con chiave PID del nodo */
-    qID = msgget(getpid(), IPC_CREAT);
+    qID = msgget(getpid(), IPC_CREAT | 0666);
+    msgget_error_checking(qID);
 
     /* Booleano abbassato quando dobbiamo terminare i processi, per gracefully terminare tutto */
     sh.stop = shmat(ids.stop, NULL, 0);
+    TEST_ERROR;
 
     /* Ci attacchiamo al libro mastro */
     sh.libroMastro = shmat(ids.ledger, NULL, 0);
+    TEST_ERROR;
 
     sh.readerCounter = shmat(ids.readCounter, NULL, 0);
+    TEST_ERROR;
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
@@ -83,7 +89,8 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
             last++;
         }
 
-        sID = msgget(tRcv.sender, IPC_CREAT);
+        sID = msgget(tRcv.sender, IPC_CREAT | 0666);
+        msgget_error_checking(sID);
 
         /*
          * Passo successivo: creazione del blocco avente SO_BLOCK_SIZE-1 transazioni presenti nella TP.
@@ -108,10 +115,11 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
             if (sh.libroMastro->freeBlock == SO_REGISTRY_SIZE) {
                 *sh.stop = LEDGERFULL;
             } else {
-                blockPointer = ++sh.libroMastro->freeBlock;
+                sh.libroMastro->freeBlock++;
+                blockPointer = sh.libroMastro->freeBlock;
 
                 /* Scriviamo i primi SO_BLOCK_SIZE-1 blocchi nel libro mastro */
-                for (i = last - SO_BLOCK_SIZE - 1; i < last + SO_BLOCK_SIZE - 1; i++) {
+                for (i = last - (SO_BLOCK_SIZE - 1); i < last; i++) {
                     sh.libroMastro[blockPointer].transazioni[i] = transactionPool[i];
                 }
                 sh.libroMastro[blockPointer].transazioni[i + 1] = generateReward(i + 1, transactionPool, blockReward);
