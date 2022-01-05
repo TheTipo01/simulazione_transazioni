@@ -42,6 +42,11 @@ typedef struct Processo {
     int transactions;
 } Processo;
 
+typedef struct Blocco {
+    struct Transazione transazioni[SO_BLOCK_SIZE];
+    int freeBlock;
+} Blocco;
+
 struct SharedMemoryID {
     int ledger;
     int nodePIDs;
@@ -52,9 +57,8 @@ struct SharedMemoryID {
 };
 
 struct SharedMemory {
-    struct Transazione **libroMastro;
+    Blocco *libroMastro;
     unsigned int *readerCounter;
-    int uID;
     Processo *usersPIDs;
     Processo *nodePIDs;
     int *stop;

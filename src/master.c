@@ -31,18 +31,15 @@ int main(int argc, char *argv[]) {
     int i, j = 0, currentPid, status, *stop;
     sigset_t wset;
     struct timespec delay;
-    struct Transazione **libroMastro;
+    Blocco *libroMastro;
     struct SharedMemoryID ids;
     Processo *nodePIDs, *usersPIDs;
 
     /* Disattiviamo il buffering */
     setvbuf(stdout, NULL, _IONBF, 0);
 
-    /* Seeding di rand con il tempo attuale */
-    srand(time(NULL));
-
     /* Allocazione memoria per il libro mastro */
-    ids.ledger = shmget(IPC_PRIVATE, SO_REGISTRY_SIZE * (SO_BLOCK_SIZE * sizeof(struct Transazione)),
+    ids.ledger = shmget(IPC_PRIVATE, SO_REGISTRY_SIZE * sizeof(Blocco),
                         S_IRUSR | S_IWUSR);
     shmget_error_checking(ids.ledger);
 
@@ -83,6 +80,7 @@ int main(int argc, char *argv[]) {
 
     /* Collegamento del libro mastro (ci serve per controllo dati) */
     libroMastro = shmat(ids.ledger, NULL, 0);
+    libroMastro->freeBlock = 0;
 
     /* Collegamento all'array dello stato dei processi */
     nodePIDs = shmat(ids.nodePIDs, NULL, 0);
@@ -191,11 +189,7 @@ int main(int argc, char *argv[]) {
     fprintf(stdout, "Numero di processi utente terminati prematuramente : %d\n\n", j);
 
     /* Stampa del numero di blocchi nel libro mastro */
-    j = 0;
-    for (i = 0; i < SO_REGISTRY_SIZE; i++) {
-        if (libroMastro[i] != NULL) j++;
-    }
-    fprintf(stdout, "Numero di blocchi nel libro mastro: %d\n\n", j);
+    fprintf(stdout, "Numero di blocchi nel libro mastro: %d\n\n", libroMastro->freeBlock);
 
     /* Stampa del numero di transazioni nella TP di ogni nodo */
     fprintf(stdout, "Numero di transazioni presenti nella TP di ogni processo nodo:\n");

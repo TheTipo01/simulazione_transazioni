@@ -10,7 +10,7 @@
  * funzione ritorna quindi il valore trovato, che viene poi aggiunto al bilancio totale dell'utente. E' presente un semaforo
  * che permette al processo stesso e agli altri processi di leggere ma non di scrivere, in modo di evitare inconsistenze.
  * */
-unsigned int calcEntrate(int semID, struct Transazione **lm, unsigned int *readCounter);
+unsigned int calcEntrate(int semID, Blocco *lm, unsigned int *readCounter);
 
 /* Funzione principale del processo utente, responsabile del suo funzionamento.
  * Essa provvede a creare transazioni da inviare ai processi nodo.

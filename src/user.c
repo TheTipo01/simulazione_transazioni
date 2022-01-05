@@ -10,13 +10,13 @@
 #include <time.h>
 #include <unistd.h>
 
-int lastBlockChecked = 0, failedTransaction = 0;
+int lastBlockChecked = 0, failedTransaction = 0, uID;
 struct SharedMemory sh;
 Config cfg;
 unsigned int position;
 struct SharedMemoryID ids;
 
-unsigned int calcEntrate(int semID, struct Transazione **lm, unsigned int *readCounter) {
+unsigned int calcEntrate(int semID, Blocco *lm, unsigned int *readCounter) {
     int pid = getpid(), j;
     unsigned int tmpBalance = 0;
 
@@ -26,13 +26,13 @@ unsigned int calcEntrate(int semID, struct Transazione **lm, unsigned int *readC
 
     /* Cicliamo all'interno del libro mastro per controllare ogni transazione
      * eseguita */
-    for (; lastBlockChecked < SO_REGISTRY_SIZE && lm[lastBlockChecked] != NULL; lastBlockChecked++) {
+    for (; lastBlockChecked < SO_REGISTRY_SIZE && lastBlockChecked < sh.libroMastro->freeBlock; lastBlockChecked++) {
         /* Se in posizione i c'è un blocco, controlliamo il contenuto */
         for (j = 0; j < SO_BLOCK_SIZE; j++) {
             /* Se nella transazione il ricevente è l'utente stesso, allora
              * aggiungiamo al bilancio la quantità della transazione */
-            if (lm[lastBlockChecked][j].receiver == pid) {
-                tmpBalance += lm[lastBlockChecked][j].quantity;
+            if (lm[lastBlockChecked].transazioni[j].receiver == pid) {
+                tmpBalance += lm[lastBlockChecked].transazioni[j].quantity;
             }
         }
     }
@@ -46,7 +46,7 @@ unsigned int calcEntrate(int semID, struct Transazione **lm, unsigned int *readC
 void transactionGenerator(int signal) {
     struct Messaggio msg;
     struct Transazione *msg_feedback;
-    struct timespec *my_time;
+    struct timespec *time;
     int nID;
 
     pid_t receiverPID = sh.usersPIDs[rand() % cfg.SO_USERS_NUM].pid;
@@ -57,8 +57,8 @@ void transactionGenerator(int signal) {
 
     msg.transazione.sender = getpid();
     msg.transazione.receiver = receiverPID;
-    clock_gettime(CLOCK_REALTIME, my_time);
-    msg.transazione.timestamp = *my_time;
+    clock_gettime(CLOCK_REALTIME, time);
+    msg.transazione.timestamp = *time;
     if (cfg.SO_REWARD < 1)
         msg.transazione.reward = 1;
     else
@@ -71,7 +71,7 @@ void transactionGenerator(int signal) {
     msgsnd(nID, &msg, sizeof(struct Transazione), 0);
 
     /* Aspetto il messaggio di successo/fallimento */
-    msgrcv(sh.uID, &msg_feedback, sizeof(struct Transazione), 0, 0);
+    msgrcv(uID, &msg_feedback, sizeof(struct Transazione), 0, 0);
     if (msg_feedback->sender == -1) {
         /* Se la transazione fallisce, aumentiamo il contatore delle transazioni
          * fallite di 1 */
@@ -86,12 +86,15 @@ void transactionGenerator(int signal) {
 
 void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclIndex) {
     struct timespec *my_time;
-    int sig, nID, j, k = 0;
+    int sig, j, k = 0;
     sigset_t wset;
 
     cfg = lclCfg;
     position = lclIndex;
     ids = lclIds;
+
+    /* Seeding di rand con il tempo attuale */
+    srand(getpid());
 
     /* Collegamento del libro mastro */
     sh.libroMastro = shmat(ids.ledger, NULL, 0);
@@ -99,7 +102,7 @@ void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclInde
     sh.readerCounter = shmat(ids.readCounter, NULL, 0);
 
     /* Creo la coda con chiave PID dell'utente */
-    sh.uID = msgget(getpid(), IPC_CREAT);
+    uID = msgget(getpid(), IPC_CREAT);
 
     /* Collegamento all'array dello stato dei processi utente */
     sh.usersPIDs = shmat(ids.usersPIDs, NULL, 0);
@@ -182,12 +185,12 @@ void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclInde
     }
 
     /* Detach di tutte le shared memory */
-    shmdt_error_checking(&sh.libroMastro);
+    shmdt_error_checking(sh.libroMastro);
     shmdt_error_checking(&sh.readerCounter);
     shmdt_error_checking(&sh.usersPIDs);
     shmdt_error_checking(&sh.nodePIDs);
     shmdt_error_checking(&sh.stop);
 
     /* Chiusura delle code di messaggi utilizzate */
-    msgctl(sh.uID, IPC_RMID, NULL);
+    msgctl(uID, IPC_RMID, NULL);
 }

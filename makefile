@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -std=c89 -pedantic
+CFLAGS = -std=c89 -pedantic -O2
 
 all:
 	$(CC) src/master.c -o master $(CFLAGS)
