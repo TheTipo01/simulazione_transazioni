@@ -27,10 +27,8 @@ struct Transazione generateReward(int pos, struct Transazione *tp, int totrw) {
 
 void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
     struct Transazione *transactionPool = malloc(cfg.SO_TP_SIZE * sizeof(struct Transazione));
-    int sig, i = 0, j, k, last = 0, qID, sID, blockPointer, blockReward;
-    unsigned int sum;
-    struct timespec wait_time;
-    struct Transazione tRcv;
+    int sig, i = 0, last = 0, blockPointer, blockReward;
+    struct Messaggio tRcv;
     struct Messaggio msg;
     struct SharedMemory sh;
     sigset_t wset;
@@ -45,10 +43,6 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
     /* Collegamento all'array dello stato dei processi nodo */
     sh.nodePIDs = shmat(ids.nodePIDs, NULL, 0);
     TEST_ERROR;
-
-    /* Creo la coda con chiave PID del nodo */
-    qID = msgget(getpid(), IPC_CREAT | 0666);
-    msgget_error_checking(qID);
 
     /* Booleano abbassato quando dobbiamo terminare i processi, per gracefully terminare tutto */
     sh.stop = shmat(ids.stop, NULL, 0);
@@ -73,40 +67,32 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
      * tutti gli altri child
      */
     sigwait(&wset, &sig);
+    sh.nodePIDs[position].status = PROCESS_RUNNING;
 
     while (*sh.stop < 0) {
         /* Riceve SO_TP_SIZE transazioni  */
         blockReward = 0;
         while (last % SO_BLOCK_SIZE - 1 != 0 && last != cfg.SO_TP_SIZE) {
-            msgrcv(qID, &tRcv, sizeof(struct Transazione), 0, 0);
-            transactionPool[last].quantity = tRcv.quantity * ((100 - tRcv.reward) / 100);
-            transactionPool[last].reward = tRcv.reward;
-            transactionPool[last].sender = tRcv.sender;
-            transactionPool[last].receiver = tRcv.receiver;
-            transactionPool[last].timestamp = tRcv.timestamp;
-            sh.nodePIDs[position].balance += tRcv.quantity * (tRcv.reward / 100);
-            blockReward += tRcv.quantity * (tRcv.reward / 100);
+            msgrcv(sh.nodePIDs[position].msgID, &tRcv, sizeof(struct Messaggio), 0, 0);
+            fprintf(stdout, "Received message from %d", tRcv.transazione.sender);
+            transactionPool[last].quantity = tRcv.transazione.quantity * ((100 - tRcv.transazione.reward) / 100);
+            transactionPool[last].reward = tRcv.transazione.reward;
+            transactionPool[last].sender = tRcv.transazione.sender;
+            transactionPool[last].receiver = tRcv.transazione.receiver;
+            transactionPool[last].timestamp = tRcv.transazione.timestamp;
+            sh.nodePIDs[position].balance += tRcv.transazione.quantity * (tRcv.transazione.reward / 100);
+            blockReward += tRcv.transazione.quantity * (tRcv.transazione.reward / 100);
             last++;
         }
-
-        sID = msgget(tRcv.sender, IPC_CREAT | 0666);
-        msgget_error_checking(sID);
 
         /*
          * Passo successivo: creazione del blocco avente SO_BLOCK_SIZE-1 transazioni presenti nella TP.
          * Se però la TP è piena, la transazione viene scartata: si avvisa il sender
          */
         if (last != cfg.SO_TP_SIZE) {
-            /* Transazione accettata: inviamo la transazione indietro (= successo) */
-
-            msg.m_type = 0;
-            msg.transazione = tRcv;
-            msgsnd(sID, &msg, sizeof(struct Transazione), IPC_NOWAIT);
-
             /* Simulazione elaborazione del blocco */
-            wait_time.tv_nsec =
-                    rand() % (cfg.SO_MAX_TRANS_PROC_NSEC + 1 - cfg.SO_MIN_TRANS_PROC_NSEC) + cfg.SO_MIN_TRANS_PROC_NSEC;
-            nanosleep(&wait_time, NULL);
+            sleeping(random() % (cfg.SO_MAX_TRANS_PROC_NSEC + 1 - cfg.SO_MIN_TRANS_PROC_NSEC) +
+                                        cfg.SO_MIN_TRANS_PROC_NSEC);
 
             /* Ci riserviamo un blocco nel libro mastro aumentando il puntatore dei blocchi liberi */
             sem_reserve(ids.sem, LEDGER_WRITE);
@@ -128,12 +114,10 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
             sem_release(ids.sem, LEDGER_WRITE);
 
             /* Notifichiamo il processo dell'arrivo di una transazione */
-            kill(tRcv.receiver, SIGUSR1);
+            kill(tRcv.transazione.receiver, SIGUSR1);
         } else {
-            /* Notifichiamo l'utente, rinviandogli la transazione con uno dei campi non valido () */
-            msg.m_type = 0;
-            msg.transazione.sender = BLOCK_SENDER;
-            msgsnd(sID, &msg, sizeof(struct Transazione), IPC_NOWAIT);
+            /* Se la TP è piena, chiudiamo la coda di messaggi, in modo che il nodo non possa più accettare transazioni. */
+            msgctl(sh.nodePIDs[position].msgID, IPC_RMID, NULL);
         }
     }
 
@@ -147,9 +131,6 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
     shmdt_error_checking(&sh.usersPIDs);
     shmdt_error_checking(&sh.libroMastro);
     shmdt_error_checking(&sh.stop);
-
-    /* Chiusura delle code di messaggi */
-    msgctl(qID, IPC_RMID, NULL);
 
     /* E liberiamo la memoria allocata con malloc */
     free(transactionPool);

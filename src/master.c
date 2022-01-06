@@ -27,15 +27,12 @@
 
 int main(int argc, char *argv[]) {
     Config cfg = newConfig();
-    unsigned int *readerCounter, execTime = 0;
+    unsigned int execTime = 0;
     int i, j = 0, currentPid, status, *stop;
     sigset_t wset;
-    struct timespec delay;
-    Blocco *libroMastro;
+    struct SharedMemory sh;
     struct SharedMemoryID ids;
-    Processo *nodePIDs, *usersPIDs;
 
-    /* Disattiviamo il buffering */
     setvbuf(stdout, NULL, _IONBF, 0);
 
     /* Allocazione memoria per il libro mastro */
@@ -47,11 +44,11 @@ int main(int argc, char *argv[]) {
     shmget_error_checking(ids.readCounter);
 
     /* Allocazione dell'array dello stato dei nodi */
-    ids.nodePIDs = shmget(IPC_PRIVATE, cfg.SO_NODES_NUM * sizeof(int), 0666);
+    ids.nodePIDs = shmget(IPC_PRIVATE, cfg.SO_NODES_NUM * sizeof(ProcessoNode), 0666);
     shmget_error_checking(ids.nodePIDs);
 
     /* Allocazione dell'array dello stato dei nodi */
-    ids.usersPIDs = shmget(IPC_PRIVATE, cfg.SO_USERS_NUM * sizeof(int), 0666);
+    ids.usersPIDs = shmget(IPC_PRIVATE, cfg.SO_USERS_NUM * sizeof(ProcessoUser), 0666);
     shmget_error_checking(ids.usersPIDs);
 
     /* Allocazione del flag per far terminare correttamente i processi */
@@ -66,23 +63,24 @@ int main(int argc, char *argv[]) {
     sigprocmask(SIG_BLOCK, &wset, NULL);
 
     /* Inizializziamo i semafori che usiamo */
-    ids.sem = semget(IPC_PRIVATE, FINE_SEMAFORI + cfg.SO_USERS_NUM, IPC_CREAT | 0666);
+    ids.sem = semget(IPC_PRIVATE, FINE_SEMAFORI + cfg.SO_USERS_NUM + 1, IPC_CREAT | 0666);
+    TEST_ERROR;
 
     /* Inizializziamo il semaforo di lettura a 0 */
-    readerCounter = shmat(ids.readCounter, NULL, 0);
-    *readerCounter = 0;
-    shmdt_error_checking(readerCounter);
+    sh.readerCounter = shmat(ids.readCounter, NULL, 0);
+    *sh.readerCounter = 0;
+    shmdt_error_checking(sh.readerCounter);
 
     /* Inizializziamo il flag di terminazione a -1 (verrà abbassato quando tutti i processi devono terminare) */
     stop = shmat(ids.stop, NULL, 0);
     *stop = -1;
 
     /* Collegamento del libro mastro (ci serve per controllo dati) */
-    libroMastro = shmat(ids.ledger, NULL, 0);
-    libroMastro->freeBlock = 0;
+    sh.libroMastro = shmat(ids.ledger, NULL, 0);
+    sh.libroMastro->freeBlock = 0;
 
     /* Collegamento all'array dello stato dei processi */
-    nodePIDs = shmat(ids.nodePIDs, NULL, 0);
+    sh.nodePIDs = shmat(ids.nodePIDs, NULL, 0);
 
     /* Avviamo i processi node */
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
@@ -93,15 +91,16 @@ int main(int argc, char *argv[]) {
                 startNode(cfg, ids, i);
                 exit(0);
             default:
-                nodePIDs[i].pid = currentPid;
-                nodePIDs[i].balance = 0;
-                nodePIDs[i].status = PROCESS_WAITING;
-                nodePIDs[i].transactions = 0;
+                sh.nodePIDs[i].pid = currentPid;
+                sh.nodePIDs[i].balance = 0;
+                sh.nodePIDs[i].status = PROCESS_WAITING;
+                sh.nodePIDs[i].transactions = 0;
+                sh.nodePIDs[i].msgID = msgget(IPC_PRIVATE, IPC_CREAT | 0600);
         }
     }
 
     /* Collegamento all'array dello stato dei processi utente */
-    usersPIDs = shmat(ids.usersPIDs, NULL, 0);
+    sh.usersPIDs = shmat(ids.usersPIDs, NULL, 0);
 
     /* Avviamo i processi user */
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
@@ -112,10 +111,9 @@ int main(int argc, char *argv[]) {
                 startUser(cfg, ids, i);
                 exit(0);
             default:
-                usersPIDs[i].pid = currentPid;
-                usersPIDs[i].balance = cfg.SO_BUDGET_INIT;
-                usersPIDs[i].status = PROCESS_WAITING;
-                usersPIDs[i].transactions = -1;
+                sh.usersPIDs[i].pid = currentPid;
+                sh.usersPIDs[i].balance = cfg.SO_BUDGET_INIT;
+                sh.usersPIDs[i].status = PROCESS_WAITING;
         }
     }
 
@@ -126,12 +124,11 @@ int main(int argc, char *argv[]) {
      * Tempo di esecuzione della simulazione = SO_SIM_SEC.
      * Se finisce il tempo/tutti i processi utente finiscono/il libro mastro è pieno, terminare la simulazione.
      */
-    delay.tv_nsec = 1000000000;
     if (!fork()) {
         stop = shmat(ids.stop, NULL, 0);
         while (execTime < cfg.SO_SIM_SEC && *stop == -1) {
-            printStatus(nodePIDs, usersPIDs, &cfg);
-            nanosleep(&delay, NULL);
+            sleeping(1000000000);
+            printStatus(sh.nodePIDs, sh.usersPIDs, &cfg);
             execTime++;
         }
 
@@ -144,14 +141,12 @@ int main(int argc, char *argv[]) {
     }
 
     /* Aspettiamo che i processi finiscano */
-    waitpid(0, &status, 0);
+    waitpid(-1, &status, 0);
 
     /*
      * Dopo la terminazione dei processi nodo e utente, cominciamo la terminazione della simulazione con la
      * stampa del riepilogo
      */
-
-    /* setvbuf(stdout, NULL, _IOFBF, 0); */
 
     /* Stampa della causa di terminazione della simulazione */
     switch (*stop) {
@@ -170,36 +165,37 @@ int main(int argc, char *argv[]) {
     /* Stampa dello stato e del bilancio di ogni processo utente */
     fprintf(stdout, "PROCESSI UTENTE:\n");
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
-        fprintf(stdout, "       #%d, balance = %d\n", usersPIDs[i].pid, usersPIDs[i].balance);
+        fprintf(stdout, "       #%d, balance = %d\n", sh.usersPIDs[i].pid, sh.usersPIDs[i].balance);
     }
     fprintf(stdout, "\n");
 
     /* Stampa del bilancio di ogni processo nodo */
     fprintf(stdout, "PROCESSI NODO:\n");
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
-        fprintf(stdout, "       #%d, balance = %d\n", nodePIDs[i].pid, nodePIDs[i].balance);
+        fprintf(stdout, "       #%d, balance = %d\n", sh.nodePIDs[i].pid, sh.nodePIDs[i].balance);
     }
     fprintf(stdout, "\n");
 
     /* Stampa degli utenti terminati a causa delle molteplici transazioni fallite */
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
-        if (usersPIDs[i].status == PROCESS_FINISHED_PREMATURELY) j++;
+        if (sh.usersPIDs[i].status == PROCESS_FINISHED_PREMATURELY) j++;
     }
     fprintf(stdout, "Numero di processi utente terminati prematuramente : %d\n\n", j);
 
     /* Stampa del numero di blocchi nel libro mastro */
-    fprintf(stdout, "Numero di blocchi nel libro mastro: %d\n\n", libroMastro->freeBlock);
+    fprintf(stdout, "Numero di blocchi nel libro mastro: %d\n\n", sh.libroMastro->freeBlock);
 
     /* Stampa del numero di transazioni nella TP di ogni nodo */
     fprintf(stdout, "Numero di transazioni presenti nella TP di ogni processo nodo:\n");
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
-        fprintf(stdout, "       #%d, transactions = %d\n", nodePIDs[i].pid, nodePIDs[i].transactions);
+        fprintf(stdout, "       #%d, transactions = %d\n", sh.nodePIDs[i].pid, sh.nodePIDs[i].transactions);
     }
 
     /* Cleanup prima di uscire: detach di tutte le shared memory, e impostazione dello stato del nostro processo */
-    shmdt_error_checking(nodePIDs);
-    shmdt_error_checking(usersPIDs);
-    shmdt_error_checking(libroMastro);
+    shmdt_error_checking(sh.nodePIDs);
+    shmdt_error_checking(sh.usersPIDs);
+    shmdt_error_checking(sh.libroMastro);
+    semctl(ids.sem, 0, IPC_RMID);
 
     return 0;
 }

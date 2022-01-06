@@ -17,7 +17,7 @@ void read_end(int sem_id, unsigned int *readCounter);
  *      N° di processi nodo attivi
  *      Processo utente/nodo con bilancio più alto
  *      Processo utente/nodo con bilancio più basso */
-void printStatus(Processo *nodePIDs, Processo *usersPIDs, Config *cfg);
+void printStatus(ProcessoNode *nodePIDs, ProcessoUser *usersPIDs, Config *cfg);
 
 /* Macro per il controllo del detach della memoria condivisa. Se l'address ritornato dalla funzione shmdt è uguale a -1,
  * si esce dal programma segnalando l'errore. */

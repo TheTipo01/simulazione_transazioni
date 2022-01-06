@@ -6,28 +6,38 @@
 #include "utilities.h"
 #include "../vendor/libsem.h"
 
+#define clear() fprintf(stdout, "\033[1;1H\033[2J")
+
 void read_start(int sem_id, unsigned int *readCounter) {
+    sem_reserve(sem_id, LEDGER_WRITE);
+    /*
+    fprintf(stdout, "\nfoof %d\n", *readCounter);
     sem_reserve(sem_id, LEDGER_READ);
-    readCounter++;
+    *readCounter+=1;
 
     if (*readCounter == 1) {
         sem_reserve(sem_id, LEDGER_WRITE);
     }
     sem_release(sem_id, LEDGER_READ);
+     */
 }
 
 void read_end(int sem_id, unsigned int *readCounter) {
+    sem_release(sem_id, LEDGER_WRITE);
+    /*
     sem_reserve(sem_id, LEDGER_READ);
-    readCounter--;
+    *readCounter-=1;
 
     if (*readCounter == 0) {
         sem_release(sem_id, LEDGER_WRITE);
     }
     sem_release(sem_id, LEDGER_READ);
+     */
 }
 
-void printStatus(Processo *nodePIDs, Processo *usersPIDs, Config *cfg) {
-    int i, activeNodes = 0, activeUsers = 0, maxPid, minPid;
+void printStatus(ProcessoNode *nodePIDs, ProcessoUser *usersPIDs, Config *cfg) {
+    int i, activeNodes = 0, activeUsers = 0;
+    pid_t maxPid, minPid;
     unsigned int maxBal, minBal;
     char *maxStat, *minStat;
 
@@ -50,7 +60,7 @@ void printStatus(Processo *nodePIDs, Processo *usersPIDs, Config *cfg) {
                         maxStat = "running";
                         break;
                 }
-            };
+            }
             if (usersPIDs[i].balance < minBal) {
                 minBal = usersPIDs[i].balance;
                 minPid = usersPIDs[i].pid;
@@ -63,13 +73,12 @@ void printStatus(Processo *nodePIDs, Processo *usersPIDs, Config *cfg) {
                         break;
 
                 }
-            };
-        };
+            }
+        }
     }
     fprintf(stdout, "\nNumero di processi utente attivi: %d\n", activeUsers);
     fprintf(stdout, "Processo utente con bilancio più alto: #%d, status = %s, balance = %d\n", maxPid, maxStat, maxBal);
-    fprintf(stdout, "Processo utente con bilancio più basso: #%d, status = %s, balance = %d\n", minPid, minStat,
-            minBal);
+    /*fprintf(stdout, "Processo utente con bilancio più basso: #%d, status = %s, balance = %d\n", minPid, minStat, minBal);*/
 
     maxBal = 0;
     minBal = cfg->SO_BUDGET_INIT;
@@ -87,7 +96,7 @@ void printStatus(Processo *nodePIDs, Processo *usersPIDs, Config *cfg) {
                         maxStat = "running";
                         break;
                 }
-            };
+            }
             if (nodePIDs[i].balance < minBal) {
                 minBal = nodePIDs[i].balance;
                 minPid = nodePIDs[i].pid;
@@ -99,13 +108,15 @@ void printStatus(Processo *nodePIDs, Processo *usersPIDs, Config *cfg) {
                         minStat = "running";
                         break;
                 }
-            };
-        };
+            }
+        }
     }
     fprintf(stdout, "\nNumero di processi nodo attivi: %d\n", activeNodes);
     fprintf(stdout, "Processo nodo con bilancio più alto: #%d, status = %s, balance = %d\n", maxPid, maxStat, maxBal);
     fprintf(stdout, "Processo nodo con bilancio più basso: #%d, status = %s, balance = %d\n\n", minPid, minStat,
             minBal);
+    fprintf(stdout, "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
+    clear();
 }
 
 void shmget_error_checking(int id) {
@@ -113,6 +124,13 @@ void shmget_error_checking(int id) {
         fprintf(stderr, "%s: %d. Errore in semget #%03d: %s\n", __FILE__, __LINE__, errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
+}
+
+void sleeping(long waitingTime){
+    struct timespec my_time;
+    my_time.tv_sec = waitingTime / 1000000000;
+    my_time.tv_nsec = waitingTime % 1000000000;
+    while (nanosleep(&my_time, &my_time) == -1);
 }
 
 #endif

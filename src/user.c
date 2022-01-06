@@ -45,35 +45,29 @@ unsigned int calcEntrate(int semID, Blocco *lm, unsigned int *readCounter) {
 
 void transactionGenerator(int signal) {
     struct Messaggio msg;
-    struct Transazione *msg_feedback;
     struct timespec *time;
-    int nID;
+    int feedback;
 
-    pid_t receiverPID = sh.usersPIDs[rand() % cfg.SO_USERS_NUM].pid;
-    pid_t targetNodePID = sh.nodePIDs[rand() % cfg.SO_NODES_NUM].pid;
-
-    /* Creazione coda di messaggi del nodo scelto come target */
-    nID = msgget(targetNodePID, IPC_CREAT | 0666);
-    TEST_ERROR;
+    long receiver = random() % cfg.SO_USERS_NUM;
+    long targetNode = random() % cfg.SO_NODES_NUM;
 
     msg.transazione.sender = getpid();
-    msg.transazione.receiver = receiverPID;
+    msg.transazione.receiver = sh.usersPIDs[receiver].pid;
     clock_gettime(CLOCK_REALTIME, time);
     msg.transazione.timestamp = *time;
     if (cfg.SO_REWARD < 1)
         msg.transazione.reward = 1;
     else
         msg.transazione.reward = cfg.SO_REWARD;
-    msg.transazione.quantity = rand() % (cfg.SO_BUDGET_INIT + 1 - 2) + 2;
+    msg.transazione.quantity = random() % (cfg.SO_BUDGET_INIT + 1 - 2) + 2;
 
     msg.m_type = 0;
 
     /* Invio al nodo la transazione */
-    msgsnd(nID, &msg, sizeof(struct Transazione), 0);
+    feedback = msgsnd(sh.nodePIDs[targetNode].msgID, &msg, sizeof(struct Messaggio), 0);
+    TEST_ERROR;
 
-    /* Aspetto il messaggio di successo/fallimento */
-    msgrcv(uID, &msg_feedback, sizeof(struct Transazione), 0, 0);
-    if (msg_feedback->sender == -1) {
+    if (feedback == -1) {
         /* Se la transazione fallisce, aumentiamo il contatore delle transazioni
          * fallite di 1 */
         failedTransaction++;
@@ -86,7 +80,6 @@ void transactionGenerator(int signal) {
 }
 
 void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclIndex) {
-    struct timespec *my_time;
     int sig, j, k = 0;
     sigset_t wset;
 
@@ -134,6 +127,7 @@ void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclInde
      * tutti gli altri child
      */
     sigwait(&wset, &sig);
+    sh.usersPIDs[position].status = PROCESS_RUNNING;
 
     /* Aggiunge l'handler del segnale SIGUSR2, designato per far scatenare la generazione di una transazione */
     signal(SIGUSR2, transactionGenerator);
@@ -149,17 +143,13 @@ void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclInde
         if (sh.usersPIDs[position].balance >= 2) {
             transactionGenerator(2580);
 
-            my_time->tv_nsec =
-                    rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
-                    cfg.SO_MIN_TRANS_GEN_NSEC;
-            nanosleep(my_time, NULL);
+            sleeping(random() % (cfg.SO_MAX_TRANS_GEN_NSEC - cfg.SO_MIN_TRANS_GEN_NSEC + 1) +
+                     cfg.SO_MIN_TRANS_GEN_NSEC);
 
         } else {
             /* no more moners :( */
-            my_time->tv_nsec =
-                    rand() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
-                    cfg.SO_MIN_TRANS_GEN_NSEC;
-            nanosleep(my_time, NULL);
+            sleeping(random() % (cfg.SO_MAX_TRANS_GEN_NSEC - cfg.SO_MIN_TRANS_GEN_NSEC + 1) +
+                     cfg.SO_MIN_TRANS_GEN_NSEC);
 
             /* Aspettiamo finchè l'utente non riceve una transazione */
             sigwait(&wset, &sig);

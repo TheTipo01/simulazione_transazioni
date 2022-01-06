@@ -28,7 +28,7 @@ struct Messaggio {
 };
 
 /* Struttura per tenere lo stato di un processo e il suo pid */
-typedef struct Processo {
+typedef struct ProcessoNode {
     /* PID del processo */
     int pid;
 
@@ -38,9 +38,22 @@ typedef struct Processo {
     /* Bilancio del processo */
     unsigned int balance;
 
-    /* Numero di transazioni nella TP (USATO SOLO DAI NODES) */
+    /* Numero di transazioni nella TP */
     int transactions;
-} Processo;
+
+    int msgID;
+} ProcessoNode;
+
+typedef struct ProcessoUser {
+    /* PID del processo */
+    int pid;
+
+    /* Stato del processo. Vedasi process_status */
+    int status;
+
+    /* Bilancio del processo */
+    unsigned int balance;
+} ProcessoUser;
 
 typedef struct Blocco {
     struct Transazione transazioni[SO_BLOCK_SIZE];
@@ -59,8 +72,8 @@ struct SharedMemoryID {
 struct SharedMemory {
     Blocco *libroMastro;
     unsigned int *readerCounter;
-    Processo *usersPIDs;
-    Processo *nodePIDs;
+    ProcessoUser *usersPIDs;
+    ProcessoNode *nodePIDs;
     int *stop;
 };
 
