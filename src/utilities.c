@@ -126,11 +126,19 @@ void shmget_error_checking(int id) {
     }
 }
 
-void sleeping(long waitingTime){
+void sleeping(long waitingTime) {
     struct timespec my_time;
     my_time.tv_sec = waitingTime / 1000000000;
     my_time.tv_nsec = waitingTime % 1000000000;
     while (nanosleep(&my_time, &my_time) == -1);
+}
+
+char *getCurTime() {
+    time_t rawtime;
+    struct tm *timeinfo;
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    return asctime(timeinfo);
 }
 
 #endif

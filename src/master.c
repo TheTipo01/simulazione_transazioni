@@ -67,9 +67,9 @@ int main(int argc, char *argv[]) {
     TEST_ERROR;
 
     /* Inizializziamo il semaforo di lettura a 0 */
-    sh.readerCounter = shmat(ids.readCounter, NULL, 0);
-    *sh.readerCounter = 0;
-    shmdt_error_checking(sh.readerCounter);
+    sh.readCounter = shmat(ids.readCounter, NULL, 0);
+    *sh.readCounter = 0;
+    shmdt_error_checking(sh.readCounter);
 
     /* Inizializziamo il flag di terminazione a -1 (verrà abbassato quando tutti i processi devono terminare) */
     stop = shmat(ids.stop, NULL, 0);
@@ -86,6 +86,7 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         switch (currentPid = fork()) {
             case -1:
+                fprintf(stderr, "Error forking\n");
                 exit(EXIT_FAILURE);
             case 0:
                 startNode(cfg, ids, i);
@@ -106,6 +107,7 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
         switch (currentPid = fork()) {
             case -1:
+                fprintf(stderr, "Error forking\n");
                 exit(EXIT_FAILURE);
             case 0:
                 startUser(cfg, ids, i);
@@ -141,7 +143,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* Aspettiamo che i processi finiscano */
-    waitpid(-1, &status, 0);
+    waitpid(0, &status, 0);
 
     /*
      * Dopo la terminazione dei processi nodo e utente, cominciamo la terminazione della simulazione con la
@@ -190,6 +192,8 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         fprintf(stdout, "       #%d, transactions = %d\n", sh.nodePIDs[i].pid, sh.nodePIDs[i].transactions);
     }
+
+    sleeping(1000000000);
 
     /* Cleanup prima di uscire: detach di tutte le shared memory, e impostazione dello stato del nostro processo */
     shmdt_error_checking(sh.nodePIDs);

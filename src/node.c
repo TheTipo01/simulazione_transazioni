@@ -1,22 +1,22 @@
 #include "config.h"
-#include "structure.h"
-#include "../vendor/libsem.h"
 #include "enum.c"
-#include "time.h"
+#include "../vendor/libsem.h"
+#include "structure.h"
+#include "utilities.h"
 
 #include <signal.h>
-#include <stdlib.h>
 #include <sys/msg.h>
 #include <sys/shm.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <time.h>
 
 #define BLOCK_SENDER -1
 
 struct Transazione generateReward(int pos, struct Transazione *tp, int totrw) {
     struct Transazione rewtran;
-    struct timespec *curtime;
 
-    clock_gettime(CLOCK_REALTIME, curtime);
-    rewtran.timestamp = *curtime;
+    rewtran.timestamp = getCurTime();
     rewtran.sender = BLOCK_SENDER;
     rewtran.receiver = getpid();
     rewtran.quantity = totrw;
@@ -29,9 +29,12 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
     struct Transazione *transactionPool = malloc(cfg.SO_TP_SIZE * sizeof(struct Transazione));
     int sig, i = 0, last = 0, blockPointer, blockReward;
     struct Messaggio tRcv;
-    struct Messaggio msg;
     struct SharedMemory sh;
     sigset_t wset;
+    int qid;
+    long num_bytes;
+
+    setvbuf(stdout, NULL, _IONBF, 0);
 
     /* Seeding di rand con il tempo attuale */
     srand(getpid());
@@ -52,7 +55,7 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
     sh.libroMastro = shmat(ids.ledger, NULL, 0);
     TEST_ERROR;
 
-    sh.readerCounter = shmat(ids.readCounter, NULL, 0);
+    sh.readCounter = shmat(ids.readCounter, NULL, 0);
     TEST_ERROR;
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
@@ -68,13 +71,16 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
      */
     sigwait(&wset, &sig);
     sh.nodePIDs[position].status = PROCESS_RUNNING;
-
     while (*sh.stop < 0) {
         /* Riceve SO_TP_SIZE transazioni  */
         blockReward = 0;
-        while (last % SO_BLOCK_SIZE - 1 != 0 && last != cfg.SO_TP_SIZE) {
-            msgrcv(sh.nodePIDs[position].msgID, &tRcv, sizeof(struct Messaggio), 0, 0);
-            fprintf(stdout, "Received message from %d", tRcv.transazione.sender);
+        do {
+            qid = sh.nodePIDs[position].msgID;
+            fprintf(stdout, "PID=%d - aspetto messaggio su %d\n", getpid(), qid);
+            num_bytes = msgrcv(qid, &tRcv, sizeof(struct Transazione), 1, 0);
+            TEST_ERROR;
+
+            fprintf(stdout, "Received message from %d. Byte %ld\n", tRcv.transazione.sender, num_bytes);
             transactionPool[last].quantity = tRcv.transazione.quantity * ((100 - tRcv.transazione.reward) / 100);
             transactionPool[last].reward = tRcv.transazione.reward;
             transactionPool[last].sender = tRcv.transazione.sender;
@@ -83,7 +89,9 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
             sh.nodePIDs[position].balance += tRcv.transazione.quantity * (tRcv.transazione.reward / 100);
             blockReward += tRcv.transazione.quantity * (tRcv.transazione.reward / 100);
             last++;
-        }
+        } while (last % SO_BLOCK_SIZE - 1 != 0 && last != cfg.SO_TP_SIZE);
+
+        fprintf(stdout, "fuck this shit i'm out; last=%d blockreward=%d\n", last, blockReward);
 
         /*
          * Passo successivo: creazione del blocco avente SO_BLOCK_SIZE-1 transazioni presenti nella TP.
@@ -92,7 +100,7 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
         if (last != cfg.SO_TP_SIZE) {
             /* Simulazione elaborazione del blocco */
             sleeping(random() % (cfg.SO_MAX_TRANS_PROC_NSEC + 1 - cfg.SO_MIN_TRANS_PROC_NSEC) +
-                                        cfg.SO_MIN_TRANS_PROC_NSEC);
+                     cfg.SO_MIN_TRANS_PROC_NSEC);
 
             /* Ci riserviamo un blocco nel libro mastro aumentando il puntatore dei blocchi liberi */
             sem_reserve(ids.sem, LEDGER_WRITE);

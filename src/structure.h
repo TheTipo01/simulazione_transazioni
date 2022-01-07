@@ -7,7 +7,7 @@
 struct Transazione {
     /* Timestamp della transazione con risoluzione dei nanosecondi
         (vedere funzione clock_gettime()) */
-    struct timespec timestamp;
+    char *timestamp;
 
     /* L'utente implicito che ha generato la transazione */
     int sender;
@@ -41,6 +41,7 @@ typedef struct ProcessoNode {
     /* Numero di transazioni nella TP */
     int transactions;
 
+    /* ID della coda di messaggi usata dal processo nodo per ricevere transazioni */
     int msgID;
 } ProcessoNode;
 
@@ -71,7 +72,7 @@ struct SharedMemoryID {
 
 struct SharedMemory {
     Blocco *libroMastro;
-    unsigned int *readerCounter;
+    unsigned int *readCounter;
     ProcessoUser *usersPIDs;
     ProcessoNode *nodePIDs;
     int *stop;
