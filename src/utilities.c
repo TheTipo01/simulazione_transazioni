@@ -7,32 +7,26 @@
 #include "../vendor/libsem.h"
 
 #define clear() fprintf(stdout, "\033[1;1H\033[2J")
+#define msg_size() sizeof(struct Messaggio) - sizeof(long)
 
 void read_start(int sem_id, unsigned int *readCounter) {
-    sem_reserve(sem_id, LEDGER_WRITE);
-    /*
-    fprintf(stdout, "\nfoof %d\n", *readCounter);
     sem_reserve(sem_id, LEDGER_READ);
-    *readCounter+=1;
+    *readCounter += 1;
 
     if (*readCounter == 1) {
         sem_reserve(sem_id, LEDGER_WRITE);
     }
     sem_release(sem_id, LEDGER_READ);
-     */
 }
 
 void read_end(int sem_id, unsigned int *readCounter) {
-    sem_release(sem_id, LEDGER_WRITE);
-    /*
     sem_reserve(sem_id, LEDGER_READ);
-    *readCounter-=1;
+    *readCounter -= 1;
 
     if (*readCounter == 0) {
         sem_release(sem_id, LEDGER_WRITE);
     }
     sem_release(sem_id, LEDGER_READ);
-     */
 }
 
 void printStatus(ProcessoNode *nodePIDs, ProcessoUser *usersPIDs, Config *cfg) {
@@ -127,16 +121,14 @@ void shmget_error_checking(int id) {
 }
 
 void sleeping(long waitingTime) {
-    struct timespec my_time;
-    my_time.tv_sec = waitingTime / 1000000000;
-    my_time.tv_nsec = waitingTime % 1000000000;
-    while (nanosleep(&my_time, &my_time) == -1);
+    struct timespec requested_time, remaining;
+    requested_time.tv_sec = waitingTime / 1000000000;
+    requested_time.tv_nsec = waitingTime % 1000000000;
+    nanosleep(&requested_time, &remaining);
 }
 
-char *getCurTime() {
-    time_t rawtime;
+char *formatTime(time_t rawtime) {
     struct tm *timeinfo;
-    time(&rawtime);
     timeinfo = localtime(&rawtime);
     return asctime(timeinfo);
 }

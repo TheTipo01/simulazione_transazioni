@@ -16,7 +16,7 @@
 struct Transazione generateReward(int pos, struct Transazione *tp, int totrw) {
     struct Transazione rewtran;
 
-    rewtran.timestamp = getCurTime();
+    rewtran.timestamp = time(NULL);
     rewtran.sender = BLOCK_SENDER;
     rewtran.receiver = getpid();
     rewtran.quantity = totrw;
@@ -31,8 +31,7 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
     struct Messaggio tRcv;
     struct SharedMemory sh;
     sigset_t wset;
-    int qid;
-    long num_bytes;
+    long num_bytes, wt = 0;
 
     setvbuf(stdout, NULL, _IONBF, 0);
 
@@ -75,12 +74,11 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
         /* Riceve SO_TP_SIZE transazioni  */
         blockReward = 0;
         do {
-            qid = sh.nodePIDs[position].msgID;
-            fprintf(stdout, "PID=%d - aspetto messaggio su %d\n", getpid(), qid);
-            num_bytes = msgrcv(qid, &tRcv, sizeof(struct Transazione), 1, 0);
+            fprintf(stdout, "PID=%d - aspetto messaggio su %d\n", getpid(), sh.nodePIDs[position].msgID);
+            num_bytes = msgrcv(sh.nodePIDs[position].msgID, &tRcv, msg_size(), 1, 0);
             TEST_ERROR;
-
             fprintf(stdout, "Received message from %d. Byte %ld\n", tRcv.transazione.sender, num_bytes);
+
             transactionPool[last].quantity = tRcv.transazione.quantity * ((100 - tRcv.transazione.reward) / 100);
             transactionPool[last].reward = tRcv.transazione.reward;
             transactionPool[last].sender = tRcv.transazione.sender;
@@ -99,8 +97,9 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
          */
         if (last != cfg.SO_TP_SIZE) {
             /* Simulazione elaborazione del blocco */
-            sleeping(random() % (cfg.SO_MAX_TRANS_PROC_NSEC + 1 - cfg.SO_MIN_TRANS_PROC_NSEC) +
-                     cfg.SO_MIN_TRANS_PROC_NSEC);
+            wt = random() % (cfg.SO_MAX_TRANS_PROC_NSEC + 1 - cfg.SO_MIN_TRANS_PROC_NSEC) +
+                 cfg.SO_MIN_TRANS_PROC_NSEC;
+            sleeping(wt);
 
             /* Ci riserviamo un blocco nel libro mastro aumentando il puntatore dei blocchi liberi */
             sem_reserve(ids.sem, LEDGER_WRITE);
@@ -135,10 +134,10 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
     sh.nodePIDs[position].status = PROCESS_FINISHED;
 
     /* Detach di tutte le shared memory */
-    shmdt_error_checking(&sh.nodePIDs);
-    shmdt_error_checking(&sh.usersPIDs);
-    shmdt_error_checking(&sh.libroMastro);
-    shmdt_error_checking(&sh.stop);
+    shmdt_error_checking(sh.nodePIDs);
+    shmdt_error_checking(sh.usersPIDs);
+    shmdt_error_checking(sh.libroMastro);
+    shmdt_error_checking(sh.stop);
 
     /* E liberiamo la memoria allocata con malloc */
     free(transactionPool);

@@ -7,7 +7,7 @@
 struct Transazione {
     /* Timestamp della transazione con risoluzione dei nanosecondi
         (vedere funzione clock_gettime()) */
-    char *timestamp;
+    time_t timestamp;
 
     /* L'utente implicito che ha generato la transazione */
     int sender;

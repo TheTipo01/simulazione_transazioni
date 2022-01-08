@@ -19,6 +19,8 @@
 #include <sys/shm.h>
 #include <sys/stat.h>
 
+#define PERMS 0666
+
 /*
  * master: crea SO_USERS_NUM processi utente, gestisce simulazione
  * user: fa transaction
@@ -36,23 +38,23 @@ int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IONBF, 0);
 
     /* Allocazione memoria per il libro mastro */
-    ids.ledger = shmget(IPC_PRIVATE, SO_REGISTRY_SIZE * sizeof(Blocco), 0666);
+    ids.ledger = shmget(IPC_PRIVATE, SO_REGISTRY_SIZE * sizeof(Blocco), PERMS);
     shmget_error_checking(ids.ledger);
 
     /* Allocazione del semaforo di lettura come variabile in memoria condivisa */
-    ids.readCounter = shmget(IPC_PRIVATE, sizeof(unsigned int), 0666);
+    ids.readCounter = shmget(IPC_PRIVATE, sizeof(unsigned int), PERMS);
     shmget_error_checking(ids.readCounter);
 
     /* Allocazione dell'array dello stato dei nodi */
-    ids.nodePIDs = shmget(IPC_PRIVATE, cfg.SO_NODES_NUM * sizeof(ProcessoNode), 0666);
+    ids.nodePIDs = shmget(IPC_PRIVATE, cfg.SO_NODES_NUM * sizeof(ProcessoNode), PERMS);
     shmget_error_checking(ids.nodePIDs);
 
     /* Allocazione dell'array dello stato dei nodi */
-    ids.usersPIDs = shmget(IPC_PRIVATE, cfg.SO_USERS_NUM * sizeof(ProcessoUser), 0666);
+    ids.usersPIDs = shmget(IPC_PRIVATE, cfg.SO_USERS_NUM * sizeof(ProcessoUser), PERMS);
     shmget_error_checking(ids.usersPIDs);
 
     /* Allocazione del flag per far terminare correttamente i processi */
-    ids.stop = shmget(IPC_PRIVATE, sizeof(int), 0666);
+    ids.stop = shmget(IPC_PRIVATE, sizeof(int), PERMS);
     shmget_error_checking(ids.stop);
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
@@ -63,7 +65,7 @@ int main(int argc, char *argv[]) {
     sigprocmask(SIG_BLOCK, &wset, NULL);
 
     /* Inizializziamo i semafori che usiamo */
-    ids.sem = semget(IPC_PRIVATE, FINE_SEMAFORI + cfg.SO_USERS_NUM + 1, IPC_CREAT | 0666);
+    ids.sem = semget(IPC_PRIVATE, FINE_SEMAFORI + cfg.SO_USERS_NUM + 1, IPC_CREAT | PERMS);
     TEST_ERROR;
 
     /* Inizializziamo il semaforo di lettura a 0 */
@@ -96,7 +98,8 @@ int main(int argc, char *argv[]) {
                 sh.nodePIDs[i].balance = 0;
                 sh.nodePIDs[i].status = PROCESS_WAITING;
                 sh.nodePIDs[i].transactions = 0;
-                sh.nodePIDs[i].msgID = msgget(IPC_PRIVATE, IPC_CREAT | 0600);
+                sh.nodePIDs[i].msgID = msgget(IPC_PRIVATE, IPC_CREAT | PERMS);
+                fprintf(stdout, "%d\n", sh.nodePIDs[i].msgID);
         }
     }
 
@@ -200,6 +203,8 @@ int main(int argc, char *argv[]) {
     shmdt_error_checking(sh.usersPIDs);
     shmdt_error_checking(sh.libroMastro);
     semctl(ids.sem, 0, IPC_RMID);
+
+    sleeping(1000000000);
 
     return 0;
 }

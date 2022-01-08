@@ -19,7 +19,7 @@ typedef struct Config {
 
     /* Minimo e massimo valore del tempo (espresso in nanosecondi) che trascorre fra la
     generazione di una transazione e la seguente da parte di un utente */
-    int SO_MIN_TRANS_GEN_NSEC, SO_MAX_TRANS_GEN_NSEC;
+    long SO_MIN_TRANS_GEN_NSEC, SO_MAX_TRANS_GEN_NSEC;
 
     /* Numero di volte che il processo può ritentare una transazione prima di terminare  */
     int SO_RETRY;
@@ -29,7 +29,7 @@ typedef struct Config {
 
     /* Minimo e massimo valore del tempo simulato (espresso in nanosecondi) di
     processamento di un blocco da parte di un nodo */
-    int SO_MIN_TRANS_PROC_NSEC, SO_MAX_TRANS_PROC_NSEC;
+    long SO_MIN_TRANS_PROC_NSEC, SO_MAX_TRANS_PROC_NSEC;
 
     /* Budget iniziale di ciascun processo utente */
     int SO_BUDGET_INIT;

@@ -48,14 +48,13 @@ unsigned int calcEntrate(int semID, Blocco *lm, unsigned int *readCounter) {
 void transactionGenerator(int signal) {
     struct Messaggio msg;
     int feedback;
-    int qid;
 
     long receiver = random() % cfgUser.SO_USERS_NUM;
     long targetNode = random() % cfgUser.SO_NODES_NUM;
 
     msg.transazione.sender = getpid();
     msg.transazione.receiver = shUser.usersPIDs[receiver].pid;
-    msg.transazione.timestamp = getCurTime();
+    msg.transazione.timestamp = time(NULL);
     if (cfgUser.SO_REWARD < 1)
         msg.transazione.reward = 1;
     else
@@ -65,11 +64,9 @@ void transactionGenerator(int signal) {
 
     msg.m_type = 1;
 
-    qid = shUser.nodePIDs[targetNode].msgID;
-
     /* Invio al nodo la transazione */
-    feedback = msgsnd(qid, &msg, sizeof(struct Transazione), 0);
-    fprintf(stdout, "feedback: %d\n", feedback);
+    feedback = msgsnd(shUser.nodePIDs[targetNode].msgID, &msg, msg_size(), 0);
+    fprintf(stdout, "feedback: %d - quantity %d\n", feedback, msg.transazione.quantity);
     fflush(stdout);
 
     if (feedback == -1) {
@@ -86,9 +83,10 @@ void transactionGenerator(int signal) {
 
 void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclIndex) {
     int sig, j, k = 0, cont = 0;
+    long wt;
     sigset_t wset;
 
-    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stdout, NULL, _IONBF, SHM_W | SHM_R);
 
     /* Copia parametri in variabili globali */
     cfgUser = lclCfg;
@@ -154,15 +152,17 @@ void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclInde
             transactionGenerator(2580);
             cont++;
 
-            sleeping(random() % (cfgUser.SO_MAX_TRANS_GEN_NSEC - cfgUser.SO_MIN_TRANS_GEN_NSEC + 1) +
-                     cfgUser.SO_MIN_TRANS_GEN_NSEC);
+            wt = random() % (cfgUser.SO_MAX_TRANS_GEN_NSEC + 1 - cfgUser.SO_MIN_TRANS_GEN_NSEC) +
+                 cfgUser.SO_MIN_TRANS_GEN_NSEC;
+            sleeping(wt);
 
         } else {
             /* no more moners :( */
             fprintf(stdout, "PID=%d: finiti soldi\n", getpid());
 
-            sleeping(random() % (cfgUser.SO_MAX_TRANS_GEN_NSEC - cfgUser.SO_MIN_TRANS_GEN_NSEC + 1) +
-                     cfgUser.SO_MIN_TRANS_GEN_NSEC);
+            wt = random() % (cfgUser.SO_MAX_TRANS_GEN_NSEC + 1 - cfgUser.SO_MIN_TRANS_GEN_NSEC) +
+                 cfgUser.SO_MIN_TRANS_GEN_NSEC;
+            sleeping(wt);
 
             /* Aspettiamo finchè l'utente non riceve una transazione */
             sigwait(&wset, &sig);
@@ -197,10 +197,10 @@ void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclInde
 
     /* Detach di tutte le shared memory */
     shmdt_error_checking(shUser.libroMastro);
-    shmdt_error_checking(&shUser.readCounter);
-    shmdt_error_checking(&shUser.usersPIDs);
-    shmdt_error_checking(&shUser.nodePIDs);
-    shmdt_error_checking(&shUser.stop);
+    shmdt_error_checking(shUser.readCounter);
+    shmdt_error_checking(shUser.usersPIDs);
+    shmdt_error_checking(shUser.nodePIDs);
+    shmdt_error_checking(shUser.stop);
 
     /* Chiusura delle code di messaggi utilizzate */
     msgctl(uIDUser, IPC_RMID, NULL);
