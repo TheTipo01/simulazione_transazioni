@@ -78,6 +78,7 @@ void transactionGenerator(int signal) {
          * l'uscita appena effettuata */
         shUser.usersPIDs[positionUser].balance -=
                 (unsigned int) (msg.transazione.quantity * ((float) (100 - msg.transazione.reward) / 100.0));
+        fprintf(stdout, "shUser.usersPIDs[positionUser].balance = %d\n", shUser.usersPIDs[positionUser].balance);
     }
 }
 

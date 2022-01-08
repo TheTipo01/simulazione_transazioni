@@ -38,23 +38,23 @@ int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IONBF, 0);
 
     /* Allocazione memoria per il libro mastro */
-    ids.ledger = shmget(IPC_PRIVATE, SO_REGISTRY_SIZE * sizeof(Blocco), PERMS);
+    ids.ledger = shmget(IPC_PRIVATE, SO_REGISTRY_SIZE * sizeof(Blocco), IPC_CREAT | PERMS);
     shmget_error_checking(ids.ledger);
 
     /* Allocazione del semaforo di lettura come variabile in memoria condivisa */
-    ids.readCounter = shmget(IPC_PRIVATE, sizeof(unsigned int), PERMS);
+    ids.readCounter = shmget(IPC_PRIVATE, sizeof(unsigned int), IPC_CREAT | PERMS);
     shmget_error_checking(ids.readCounter);
 
     /* Allocazione dell'array dello stato dei nodi */
-    ids.nodePIDs = shmget(IPC_PRIVATE, cfg.SO_NODES_NUM * sizeof(ProcessoNode), PERMS);
+    ids.nodePIDs = shmget(IPC_PRIVATE, cfg.SO_NODES_NUM * sizeof(ProcessoNode), IPC_CREAT | PERMS);
     shmget_error_checking(ids.nodePIDs);
 
     /* Allocazione dell'array dello stato dei nodi */
-    ids.usersPIDs = shmget(IPC_PRIVATE, cfg.SO_USERS_NUM * sizeof(ProcessoUser), PERMS);
+    ids.usersPIDs = shmget(IPC_PRIVATE, cfg.SO_USERS_NUM * sizeof(ProcessoUser), IPC_CREAT | PERMS);
     shmget_error_checking(ids.usersPIDs);
 
     /* Allocazione del flag per far terminare correttamente i processi */
-    ids.stop = shmget(IPC_PRIVATE, sizeof(int), PERMS);
+    ids.stop = shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | PERMS);
     shmget_error_checking(ids.stop);
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
@@ -92,7 +92,7 @@ int main(int argc, char *argv[]) {
                 exit(EXIT_FAILURE);
             case 0:
                 startNode(cfg, ids, i);
-                exit(0);
+                exit(EXIT_SUCCESS);
             default:
                 sh.nodePIDs[i].pid = currentPid;
                 sh.nodePIDs[i].balance = 0;
@@ -114,7 +114,7 @@ int main(int argc, char *argv[]) {
                 exit(EXIT_FAILURE);
             case 0:
                 startUser(cfg, ids, i);
-                exit(0);
+                exit(EXIT_SUCCESS);
             default:
                 sh.usersPIDs[i].pid = currentPid;
                 sh.usersPIDs[i].balance = cfg.SO_BUDGET_INIT;
@@ -202,7 +202,12 @@ int main(int argc, char *argv[]) {
     shmdt_error_checking(sh.nodePIDs);
     shmdt_error_checking(sh.usersPIDs);
     shmdt_error_checking(sh.libroMastro);
-    semctl(ids.sem, 0, IPC_RMID);
+
+    semctl(ids.ledger, 0, IPC_RMID);
+    shmctl(ids.nodePIDs, IPC_RMID, NULL);
+    shmctl(ids.usersPIDs, IPC_RMID, NULL);
+    shmctl(ids.readCounter, IPC_RMID, NULL);
+    shmctl(ids.stop, IPC_RMID, NULL);
 
     sleeping(1000000000);
 
