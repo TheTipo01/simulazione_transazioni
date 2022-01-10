@@ -36,7 +36,7 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
     setvbuf(stdout, NULL, _IONBF, 0);
 
     /* Seeding di rand con il tempo attuale */
-    srand(getpid());
+    srandom(getpid());
 
     /* Collegamento all'array dello stato dei processi utente */
     sh.usersPIDs = shmat(ids.usersPIDs, NULL, 0);
@@ -70,11 +70,10 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
      */
     sigwait(&wset, &sig);
     sh.nodePIDs[position].status = PROCESS_RUNNING;
-    while (*sh.stop < 0) {
+    while (*sh.stop < 0 && last != cfg.SO_TP_SIZE) {
         /* Riceve SO_TP_SIZE transazioni  */
         blockReward = 0;
         do {
-            fprintf(stdout, "PID=%d - aspetto messaggio su %d\n", getpid(), sh.nodePIDs[position].msgID);
             num_bytes = msgrcv(sh.nodePIDs[position].msgID, &tRcv, msg_size(), 1, 0);
             TEST_ERROR;
             fprintf(stdout, "Received message from %d. Byte %ld\n", tRcv.transazione.sender, num_bytes);
@@ -87,7 +86,7 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
             sh.nodePIDs[position].balance += tRcv.transazione.quantity * (tRcv.transazione.reward / 100);
             blockReward += tRcv.transazione.quantity * (tRcv.transazione.reward / 100);
             last++;
-        } while (last % SO_BLOCK_SIZE - 1 != 0 && last != cfg.SO_TP_SIZE);
+        } while ((last % (SO_BLOCK_SIZE - 1)) != 0 && last != cfg.SO_TP_SIZE);
 
         fprintf(stdout, "fuck this shit i'm out; last=%d blockreward=%d\n", last, blockReward);
 

@@ -20,6 +20,7 @@
 #include <sys/stat.h>
 
 #define PERMS 0666
+#define NUM_SEMAFORI FINE_SEMAFORI + cfg.SO_USERS_NUM + 1
 
 /*
  * master: crea SO_USERS_NUM processi utente, gestisce simulazione
@@ -65,8 +66,10 @@ int main(int argc, char *argv[]) {
     sigprocmask(SIG_BLOCK, &wset, NULL);
 
     /* Inizializziamo i semafori che usiamo */
-    ids.sem = semget(IPC_PRIVATE, FINE_SEMAFORI + cfg.SO_USERS_NUM + 1, IPC_CREAT | PERMS);
+    ids.sem = semget(IPC_PRIVATE, NUM_SEMAFORI, IPC_CREAT | PERMS);
+
     TEST_ERROR;
+    fprintf(stdout, "ids.sem master: %d", ids.sem);
 
     /* Inizializziamo il semaforo di lettura a 0 */
     sh.readCounter = shmat(ids.readCounter, NULL, 0);
@@ -145,8 +148,14 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    /* Aspettiamo che i processi finiscano */
-    waitpid(0, &status, 0);
+/*
+    Aspettiamo che i processi finiscano
+    for(i = 0; i < cfg.SO_USERS_NUM; i++) {
+        waitpid(sh.usersPIDs[i].pid, &status, 0);
+    }
+ */
+
+    waitpid(-1, &status, 0);
 
     /*
      * Dopo la terminazione dei processi nodo e utente, cominciamo la terminazione della simulazione con la
@@ -198,12 +207,12 @@ int main(int argc, char *argv[]) {
 
     sleeping(1000000000);
 
+    fprintf(stdout, "cleanup starting \n");
     /* Cleanup prima di uscire: detach di tutte le shared memory, e impostazione dello stato del nostro processo */
     shmdt_error_checking(sh.nodePIDs);
     shmdt_error_checking(sh.usersPIDs);
     shmdt_error_checking(sh.libroMastro);
-
-    semctl(ids.ledger, 0, IPC_RMID);
+    semctl(ids.sem, 0, IPC_RMID);
     shmctl(ids.nodePIDs, IPC_RMID, NULL);
     shmctl(ids.usersPIDs, IPC_RMID, NULL);
     shmctl(ids.readCounter, IPC_RMID, NULL);

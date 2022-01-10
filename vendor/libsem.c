@@ -1,6 +1,7 @@
 #ifndef LIBSEM_C
 #define LIBSEM_C
 
+#include <sys/sem.h>
 #include "libsem.h"
 
 /* Set a semaphore to a user defined value */

@@ -30,7 +30,7 @@ struct Messaggio {
 /* Struttura per tenere lo stato di un processo e il suo pid */
 typedef struct ProcessoNode {
     /* PID del processo */
-    int pid;
+    pid_t pid;
 
     /* Stato del processo. Vedasi process_status */
     int status;
@@ -47,7 +47,7 @@ typedef struct ProcessoNode {
 
 typedef struct ProcessoUser {
     /* PID del processo */
-    int pid;
+    pid_t pid;
 
     /* Stato del processo. Vedasi process_status */
     int status;

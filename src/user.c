@@ -78,12 +78,11 @@ void transactionGenerator(int signal) {
          * l'uscita appena effettuata */
         shUser.usersPIDs[positionUser].balance -=
                 (unsigned int) (msg.transazione.quantity * ((float) (100 - msg.transazione.reward) / 100.0));
-        fprintf(stdout, "shUser.usersPIDs[positionUser].balance = %d\n", shUser.usersPIDs[positionUser].balance);
     }
 }
 
 void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclIndex) {
-    int sig, j, k = 0, cont = 0;
+    int sig, j, k = 0, cont = 0, semcheck;
     long wt;
     sigset_t wset;
 
@@ -95,7 +94,7 @@ void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclInde
     idsUser = lclIds;
 
     /* Seeding di rand con il pid del processo */
-    srand(getpid());
+    srandom(getpid());
 
     /* Collegamento del libro mastro */
     shUser.libroMastro = shmat(idsUser.ledger, NULL, 0);
@@ -140,7 +139,8 @@ void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclInde
     signal(SIGUSR2, transactionGenerator);
 
     while (failedTransactionUser < cfgUser.SO_RETRY && *shUser.stop == -1) {
-        sem_reserve(idsUser.sem, FINE_SEMAFORI + positionUser);
+        sem_reserve(idsUser.sem, (int) (FINE_SEMAFORI + positionUser));
+        TEST_ERROR;
 
         /* Calcolo del bilancio dell'utente: calcoliamo solo le entrate, in quanto
          * le uscite vengono registrate dopo */
@@ -156,7 +156,6 @@ void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclInde
             wt = random() % (cfgUser.SO_MAX_TRANS_GEN_NSEC + 1 - cfgUser.SO_MIN_TRANS_GEN_NSEC) +
                  cfgUser.SO_MIN_TRANS_GEN_NSEC;
             sleeping(wt);
-
         } else {
             /* no more moners :( */
             fprintf(stdout, "PID=%d: finiti soldi\n", getpid());
@@ -169,7 +168,7 @@ void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclInde
             sigwait(&wset, &sig);
         }
 
-        sem_release(idsUser.sem, FINE_SEMAFORI + positionUser);
+        sem_release(idsUser.sem, (int) (FINE_SEMAFORI + positionUser));
     }
 
     fprintf(stdout, "PID=%d: esco\n", getpid());
