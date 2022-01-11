@@ -6,6 +6,8 @@
 #include "structure.h"
 #include "../vendor/libsem.h"
 #include "utilities.h"
+#include "shared_memory.h"
+#include "master.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,10 +19,6 @@
 #include <sys/wait.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#include <sys/stat.h>
-
-#define PERMS 0666
-#define NUM_SEMAFORI FINE_SEMAFORI + cfg.SO_USERS_NUM + 1
 
 /*
  * master: crea SO_USERS_NUM processi utente, gestisce simulazione
@@ -29,34 +27,20 @@
  */
 
 int main(int argc, char *argv[]) {
-    Config cfg = newConfig();
     unsigned int execTime = 0;
-    int i, j = 0, currentPid, status, *stop;
+    int i, j = 0, currentPid, status;
     sigset_t wset;
-    struct SharedMemory sh;
-    struct SharedMemoryID ids;
 
     setvbuf(stdout, NULL, _IONBF, 0);
 
-    /* Allocazione memoria per il libro mastro */
-    ids.ledger = shmget(IPC_PRIVATE, SO_REGISTRY_SIZE * sizeof(Blocco), IPC_CREAT | PERMS);
-    shmget_error_checking(ids.ledger);
+    cfg = newConfig();
 
-    /* Allocazione del semaforo di lettura come variabile in memoria condivisa */
-    ids.readCounter = shmget(IPC_PRIVATE, sizeof(unsigned int), IPC_CREAT | PERMS);
-    shmget_error_checking(ids.readCounter);
+    get_shared_ids();
+    attach_shared_memory();
 
-    /* Allocazione dell'array dello stato dei nodi */
-    ids.nodePIDs = shmget(IPC_PRIVATE, cfg.SO_NODES_NUM * sizeof(ProcessoNode), IPC_CREAT | PERMS);
-    shmget_error_checking(ids.nodePIDs);
-
-    /* Allocazione dell'array dello stato dei nodi */
-    ids.usersPIDs = shmget(IPC_PRIVATE, cfg.SO_USERS_NUM * sizeof(ProcessoUser), IPC_CREAT | PERMS);
-    shmget_error_checking(ids.usersPIDs);
-
-    /* Allocazione del flag per far terminare correttamente i processi */
-    ids.stop = shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | PERMS);
-    shmget_error_checking(ids.stop);
+    *sh.stop = -1;
+    *sh.freeBlock = 0;
+    *sh.readCounter = 0;
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
@@ -65,28 +49,6 @@ int main(int argc, char *argv[]) {
     /* Mascheriamo i segnali che usiamo */
     sigprocmask(SIG_BLOCK, &wset, NULL);
 
-    /* Inizializziamo i semafori che usiamo */
-    ids.sem = semget(IPC_PRIVATE, NUM_SEMAFORI, IPC_CREAT | PERMS);
-
-    TEST_ERROR;
-    fprintf(stdout, "ids.sem master: %d", ids.sem);
-
-    /* Inizializziamo il semaforo di lettura a 0 */
-    sh.readCounter = shmat(ids.readCounter, NULL, 0);
-    *sh.readCounter = 0;
-    shmdt_error_checking(sh.readCounter);
-
-    /* Inizializziamo il flag di terminazione a -1 (verrà abbassato quando tutti i processi devono terminare) */
-    stop = shmat(ids.stop, NULL, 0);
-    *stop = -1;
-
-    /* Collegamento del libro mastro (ci serve per controllo dati) */
-    sh.libroMastro = shmat(ids.ledger, NULL, 0);
-    sh.libroMastro->freeBlock = 0;
-
-    /* Collegamento all'array dello stato dei processi */
-    sh.nodePIDs = shmat(ids.nodePIDs, NULL, 0);
-
     /* Avviamo i processi node */
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         switch (currentPid = fork()) {
@@ -94,7 +56,7 @@ int main(int argc, char *argv[]) {
                 fprintf(stderr, "Error forking\n");
                 exit(EXIT_FAILURE);
             case 0:
-                startNode(cfg, ids, i);
+                startNode(i);
                 exit(EXIT_SUCCESS);
             default:
                 sh.nodePIDs[i].pid = currentPid;
@@ -106,9 +68,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    /* Collegamento all'array dello stato dei processi utente */
-    sh.usersPIDs = shmat(ids.usersPIDs, NULL, 0);
-
     /* Avviamo i processi user */
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
         switch (currentPid = fork()) {
@@ -116,7 +75,7 @@ int main(int argc, char *argv[]) {
                 fprintf(stderr, "Error forking\n");
                 exit(EXIT_FAILURE);
             case 0:
-                startUser(cfg, ids, i);
+                startUser(i);
                 exit(EXIT_SUCCESS);
             default:
                 sh.usersPIDs[i].pid = currentPid;
@@ -133,18 +92,18 @@ int main(int argc, char *argv[]) {
      * Se finisce il tempo/tutti i processi utente finiscono/il libro mastro è pieno, terminare la simulazione.
      */
     if (!fork()) {
-        stop = shmat(ids.stop, NULL, 0);
-        while (execTime < cfg.SO_SIM_SEC && *stop == -1) {
+        sh.stop = shmat(ids.stop, NULL, 0);
+        while (execTime < cfg.SO_SIM_SEC && *sh.stop == -1) {
             sleeping(1000000000);
             printStatus(sh.nodePIDs, sh.usersPIDs, &cfg);
             execTime++;
         }
 
         if (execTime == cfg.SO_SIM_SEC) {
-            *stop = TIMEDOUT;
+            *sh.stop = TIMEDOUT;
         }
 
-        shmdt_error_checking(stop);
+        shmdt_error_checking(sh.stop);
         return 0;
     }
 
@@ -163,7 +122,7 @@ int main(int argc, char *argv[]) {
      */
 
     /* Stampa della causa di terminazione della simulazione */
-    switch (*stop) {
+    switch (*sh.stop) {
         case LEDGERFULL:
             fprintf(stdout, "--- TERMINE SIMULAZIONE ---\nCausa terminazione: il libro mastro è pieno.\n\n");
             break;
@@ -197,7 +156,7 @@ int main(int argc, char *argv[]) {
     fprintf(stdout, "Numero di processi utente terminati prematuramente : %d\n\n", j);
 
     /* Stampa del numero di blocchi nel libro mastro */
-    fprintf(stdout, "Numero di blocchi nel libro mastro: %d\n\n", sh.libroMastro->freeBlock);
+    fprintf(stdout, "Numero di blocchi nel libro mastro: %d\n\n", *sh.freeBlock);
 
     /* Stampa del numero di transazioni nella TP di ogni nodo */
     fprintf(stdout, "Numero di transazioni presenti nella TP di ogni processo nodo:\n");
@@ -211,7 +170,7 @@ int main(int argc, char *argv[]) {
     /* Cleanup prima di uscire: detach di tutte le shared memory, e impostazione dello stato del nostro processo */
     shmdt_error_checking(sh.nodePIDs);
     shmdt_error_checking(sh.usersPIDs);
-    shmdt_error_checking(sh.libroMastro);
+    shmdt_error_checking(sh.ledger);
     semctl(ids.sem, 0, IPC_RMID);
     shmctl(ids.nodePIDs, IPC_RMID, NULL);
     shmctl(ids.usersPIDs, IPC_RMID, NULL);

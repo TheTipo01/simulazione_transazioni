@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include "config.h"
 #include "enum.c"
 #include "../vendor/libsem.h"
@@ -25,11 +27,10 @@ struct Transazione generateReward(int pos, struct Transazione *tp, int totrw) {
     return rewtran;
 }
 
-void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
+void startNode(unsigned int nodePosition) {
     struct Transazione *transactionPool = malloc(cfg.SO_TP_SIZE * sizeof(struct Transazione));
     int sig, i = 0, last = 0, blockPointer, blockReward;
     struct Messaggio tRcv;
-    struct SharedMemory sh;
     sigset_t wset;
     long num_bytes, wt = 0;
 
@@ -37,25 +38,6 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
 
     /* Seeding di rand con il tempo attuale */
     srandom(getpid());
-
-    /* Collegamento all'array dello stato dei processi utente */
-    sh.usersPIDs = shmat(ids.usersPIDs, NULL, 0);
-    TEST_ERROR;
-
-    /* Collegamento all'array dello stato dei processi nodo */
-    sh.nodePIDs = shmat(ids.nodePIDs, NULL, 0);
-    TEST_ERROR;
-
-    /* Booleano abbassato quando dobbiamo terminare i processi, per gracefully terminare tutto */
-    sh.stop = shmat(ids.stop, NULL, 0);
-    TEST_ERROR;
-
-    /* Ci attacchiamo al libro mastro */
-    sh.libroMastro = shmat(ids.ledger, NULL, 0);
-    TEST_ERROR;
-
-    sh.readCounter = shmat(ids.readCounter, NULL, 0);
-    TEST_ERROR;
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
@@ -69,12 +51,12 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
      * tutti gli altri child
      */
     sigwait(&wset, &sig);
-    sh.nodePIDs[position].status = PROCESS_RUNNING;
+    sh.nodePIDs[nodePosition].status = PROCESS_RUNNING;
     while (*sh.stop < 0 && last != cfg.SO_TP_SIZE) {
         /* Riceve SO_TP_SIZE transazioni  */
         blockReward = 0;
         do {
-            num_bytes = msgrcv(sh.nodePIDs[position].msgID, &tRcv, msg_size(), 1, 0);
+            num_bytes = msgrcv(sh.nodePIDs[nodePosition].msgID, &tRcv, msg_size(), 1, 0);
             TEST_ERROR;
             fprintf(stdout, "Received message from %d. Byte %ld\n", tRcv.transazione.sender, num_bytes);
 
@@ -83,7 +65,7 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
             transactionPool[last].sender = tRcv.transazione.sender;
             transactionPool[last].receiver = tRcv.transazione.receiver;
             transactionPool[last].timestamp = tRcv.transazione.timestamp;
-            sh.nodePIDs[position].balance += tRcv.transazione.quantity * (tRcv.transazione.reward / 100);
+            sh.nodePIDs[nodePosition].balance += tRcv.transazione.quantity * (tRcv.transazione.reward / 100);
             blockReward += tRcv.transazione.quantity * (tRcv.transazione.reward / 100);
             last++;
         } while ((last % (SO_BLOCK_SIZE - 1)) != 0 && last != cfg.SO_TP_SIZE);
@@ -104,17 +86,17 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
             sem_reserve(ids.sem, LEDGER_WRITE);
 
             /* Ledger pieno: usciamo */
-            if (sh.libroMastro->freeBlock == SO_REGISTRY_SIZE) {
+            if (*sh.freeBlock == SO_REGISTRY_SIZE) {
                 *sh.stop = LEDGERFULL;
             } else {
-                sh.libroMastro->freeBlock++;
-                blockPointer = sh.libroMastro->freeBlock;
+                *sh.freeBlock++;
+                blockPointer = *sh.freeBlock;
 
                 /* Scriviamo i primi SO_BLOCK_SIZE-1 blocchi nel libro mastro */
                 for (i = last - (SO_BLOCK_SIZE - 1); i < last; i++) {
-                    sh.libroMastro[blockPointer].transazioni[i] = transactionPool[i];
+                    sh.ledger[blockPointer].transazioni[i] = transactionPool[i];
                 }
-                sh.libroMastro[blockPointer].transazioni[i + 1] = generateReward(i + 1, transactionPool, blockReward);
+                sh.ledger[blockPointer].transazioni[i + 1] = generateReward(i + 1, transactionPool, blockReward);
             }
 
             sem_release(ids.sem, LEDGER_WRITE);
@@ -123,19 +105,19 @@ void startNode(Config cfg, struct SharedMemoryID ids, unsigned int position) {
             kill(tRcv.transazione.receiver, SIGUSR1);
         } else {
             /* Se la TP è piena, chiudiamo la coda di messaggi, in modo che il nodo non possa più accettare transazioni. */
-            msgctl(sh.nodePIDs[position].msgID, IPC_RMID, NULL);
+            msgctl(sh.nodePIDs[nodePosition].msgID, IPC_RMID, NULL);
         }
     }
 
     /* Cleanup prima di uscire */
 
     /* Impostazione dello stato del nostro processo */
-    sh.nodePIDs[position].status = PROCESS_FINISHED;
+    sh.nodePIDs[nodePosition].status = PROCESS_FINISHED;
 
     /* Detach di tutte le shared memory */
     shmdt_error_checking(sh.nodePIDs);
     shmdt_error_checking(sh.usersPIDs);
-    shmdt_error_checking(sh.libroMastro);
+    shmdt_error_checking(sh.ledger);
     shmdt_error_checking(sh.stop);
 
     /* E liberiamo la memoria allocata con malloc */

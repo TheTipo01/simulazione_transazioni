@@ -16,7 +16,7 @@ unsigned int calcEntrate(int semID, Blocco *lm, unsigned int *readCounter);
  * Essa provvede a creare transazioni da inviare ai processi nodo.
  * Oltre ai valori di configurazione, ha bisogno degli ID per accedere alle memorie condivise, e un puntatore al proprio
  * PID nella lista condivisa dei PID dei processi utente. */
-void startUser(Config cfg, struct SharedMemoryID ids, unsigned int index);
+void startUser(unsigned int userPosition);
 
 /*
  * Questa funzione è incaricata di generare le transazioni. Viene usata nel ciclo del processo utente, e come signal

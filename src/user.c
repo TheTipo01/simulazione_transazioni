@@ -1,8 +1,11 @@
+#define _GNU_SOURCE
+
 #include "config.h"
 #include "enum.c"
 #include "../vendor/libsem.h"
 #include "structure.h"
 #include "utilities.h"
+#include "master.h"
 
 #include <signal.h>
 #include <sys/msg.h>
@@ -11,11 +14,8 @@
 #include <stdlib.h>
 #include <time.h>
 
-int lastBlockCheckedUser = 0, failedTransactionUser = 0, uIDUser;
-struct SharedMemory shUser;
-Config cfgUser;
-unsigned int positionUser;
-struct SharedMemoryID idsUser;
+int lastBlockCheckedUser = 0, failedTransactionUser = 0;
+unsigned int usrPosition;
 
 unsigned int calcEntrate(int semID, Blocco *lm, unsigned int *readCounter) {
     int pid = getpid(), j;
@@ -28,7 +28,7 @@ unsigned int calcEntrate(int semID, Blocco *lm, unsigned int *readCounter) {
     /* Cicliamo all'interno del libro mastro per controllare ogni transazione
      * eseguita */
     for (; lastBlockCheckedUser < SO_REGISTRY_SIZE &&
-           lastBlockCheckedUser < shUser.libroMastro->freeBlock; lastBlockCheckedUser++) {
+           lastBlockCheckedUser < *sh.freeBlock; lastBlockCheckedUser++) {
         /* Se in posizione i c'è un blocco, controlliamo il contenuto */
         for (j = 0; j < SO_BLOCK_SIZE; j++) {
             /* Se nella transazione il ricevente è l'utente stesso, allora
@@ -42,6 +42,8 @@ unsigned int calcEntrate(int semID, Blocco *lm, unsigned int *readCounter) {
     /* Rilasciamo il semaforo di lettura a fine operazione */
     read_end(semID, readCounter);
 
+    fprintf(stdout, "PID=%d, tmpBalance=%d\n", getpid(), tmpBalance);
+
     return tmpBalance;
 }
 
@@ -49,23 +51,23 @@ void transactionGenerator(int signal) {
     struct Messaggio msg;
     int feedback;
 
-    long receiver = random() % cfgUser.SO_USERS_NUM;
-    long targetNode = random() % cfgUser.SO_NODES_NUM;
+    long receiver = random() % cfg.SO_USERS_NUM;
+    long targetNode = random() % cfg.SO_NODES_NUM;
 
     msg.transazione.sender = getpid();
-    msg.transazione.receiver = shUser.usersPIDs[receiver].pid;
+    msg.transazione.receiver = sh.usersPIDs[receiver].pid;
     msg.transazione.timestamp = time(NULL);
-    if (cfgUser.SO_REWARD < 1)
+    if (cfg.SO_REWARD < 1)
         msg.transazione.reward = 1;
     else
-        msg.transazione.reward = cfgUser.SO_REWARD;
+        msg.transazione.reward = cfg.SO_REWARD;
 
-    msg.transazione.quantity = random() % (cfgUser.SO_BUDGET_INIT + 1 - 2) + 2;
+    msg.transazione.quantity = random() % (cfg.SO_BUDGET_INIT + 1 - 2) + 2;
 
     msg.m_type = 1;
 
     /* Invio al nodo la transazione */
-    feedback = msgsnd(shUser.nodePIDs[targetNode].msgID, &msg, msg_size(), 0);
+    feedback = msgsnd(sh.nodePIDs[targetNode].msgID, &msg, msg_size(), 0);
     fprintf(stdout, "feedback: %d - quantity %d\n", feedback, msg.transazione.quantity);
     fflush(stdout);
 
@@ -76,12 +78,12 @@ void transactionGenerator(int signal) {
     } else {
         /* Se la transazione ha avuto successo, aggiorniamo il bilancio con
          * l'uscita appena effettuata */
-        shUser.usersPIDs[positionUser].balance -=
+        sh.usersPIDs[usrPosition].balance -=
                 (unsigned int) (msg.transazione.quantity * ((float) (100 - msg.transazione.reward) / 100.0));
     }
 }
 
-void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclIndex) {
+void startUser(unsigned int index) {
     int sig, j, k = 0, cont = 0, semcheck;
     long wt;
     sigset_t wset;
@@ -89,36 +91,19 @@ void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclInde
     setvbuf(stdout, NULL, _IONBF, SHM_W | SHM_R);
 
     /* Copia parametri in variabili globali */
-    cfgUser = lclCfg;
-    positionUser = lclIndex;
-    idsUser = lclIds;
+    usrPosition = index;
 
     /* Seeding di rand con il pid del processo */
     srandom(getpid());
 
-    /* Collegamento del libro mastro */
-    shUser.libroMastro = shmat(idsUser.ledger, NULL, 0);
-    TEST_ERROR;
-
-    shUser.readCounter = shmat(idsUser.readCounter, NULL, 0);
-    TEST_ERROR;
-
-    /* Creo la coda con chiave PID dell'utente */
-    uIDUser = msgget(getpid(), IPC_CREAT | 0666);
-    msgget_error_checking(uIDUser);
-
-    /* Collegamento all'array dello stato dei processi utente */
-    shUser.usersPIDs = shmat(idsUser.usersPIDs, NULL, 0);
-    TEST_ERROR;
-
-    /* Collegamento all'array dello stato dei processi nodo */
-    shUser.nodePIDs = shmat(idsUser.nodePIDs, NULL, 0);
-    TEST_ERROR;
-
-    /* Booleano abbassato quando dobbiamo terminare i processi, per gracefully
+    /*
+     * Booleano abbassato quando dobbiamo terminare i processi, per gracefully
      * terminare tutto
      */
-    shUser.stop = shmat(idsUser.stop, NULL, 0);
+    sh.freeBlock = shmat(ids.freeBlock, NULL, 0);
+    TEST_ERROR;
+
+    sh.stop = shmat(ids.stop, NULL, 0);
     TEST_ERROR;
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
@@ -133,75 +118,72 @@ void startUser(Config lclCfg, struct SharedMemoryID lclIds, unsigned int lclInde
      * tutti gli altri child
      */
     sigwait(&wset, &sig);
-    shUser.usersPIDs[positionUser].status = PROCESS_RUNNING;
+    sh.usersPIDs[usrPosition].status = PROCESS_RUNNING;
 
     /* Aggiunge l'handler del segnale SIGUSR2, designato per far scatenare la generazione di una transazione */
     signal(SIGUSR2, transactionGenerator);
 
-    while (failedTransactionUser < cfgUser.SO_RETRY && *shUser.stop == -1) {
-        sem_reserve(idsUser.sem, (int) (FINE_SEMAFORI + positionUser));
+    while (failedTransactionUser < cfg.SO_RETRY && *sh.stop == -1) {
+        sem_reserve(ids.sem, (int) (FINE_SEMAFORI + usrPosition));
         TEST_ERROR;
 
         /* Calcolo del bilancio dell'utente: calcoliamo solo le entrate, in quanto
          * le uscite vengono registrate dopo */
-        shUser.usersPIDs[positionUser].balance +=
-                calcEntrate(idsUser.sem, shUser.libroMastro, shUser.readCounter);
+        fprintf(stdout, "PID=%d, pre-update: %d\n", getpid(), sh.usersPIDs[usrPosition].balance);
+        sh.usersPIDs[usrPosition].balance +=
+                calcEntrate(ids.sem, sh.ledger, sh.readCounter);
+        fprintf(stdout, "PID=%d, post-update: %d\n", getpid(), sh.usersPIDs[usrPosition].balance);
 
-        if (shUser.usersPIDs[positionUser].balance >= 2) {
+        if (sh.usersPIDs[usrPosition].balance >= 2) {
             fprintf(stdout, "PID=%d: generazioni transazione numero %d - bilancio %d\n", getpid(), cont,
-                    shUser.usersPIDs[positionUser].balance);
+                    sh.usersPIDs[usrPosition].balance);
             transactionGenerator(2580);
             cont++;
 
-            wt = random() % (cfgUser.SO_MAX_TRANS_GEN_NSEC + 1 - cfgUser.SO_MIN_TRANS_GEN_NSEC) +
-                 cfgUser.SO_MIN_TRANS_GEN_NSEC;
+            wt = random() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
+                 cfg.SO_MIN_TRANS_GEN_NSEC;
             sleeping(wt);
         } else {
-            /* no more moners :( */
             fprintf(stdout, "PID=%d: finiti soldi\n", getpid());
 
-            wt = random() % (cfgUser.SO_MAX_TRANS_GEN_NSEC + 1 - cfgUser.SO_MIN_TRANS_GEN_NSEC) +
-                 cfgUser.SO_MIN_TRANS_GEN_NSEC;
+            wt = random() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
+                 cfg.SO_MIN_TRANS_GEN_NSEC;
             sleeping(wt);
 
             /* Aspettiamo finchè l'utente non riceve una transazione */
             sigwait(&wset, &sig);
         }
 
-        sem_release(idsUser.sem, (int) (FINE_SEMAFORI + positionUser));
+        sem_release(ids.sem, (int) (FINE_SEMAFORI + usrPosition));
     }
 
-    fprintf(stdout, "PID=%d: esco\n", getpid());
     /* Cleanup prima di uscire */
 
-    if (failedTransactionUser == cfgUser.SO_RETRY)
-        shUser.usersPIDs[positionUser].status = PROCESS_FINISHED;
+    if (failedTransactionUser == cfg.SO_RETRY)
+        sh.usersPIDs[usrPosition].status = PROCESS_FINISHED;
     else
-        shUser.usersPIDs[positionUser].status = PROCESS_FINISHED_PREMATURELY;
+        sh.usersPIDs[usrPosition].status = PROCESS_FINISHED_PREMATURELY;
 
     /* Se non c'è stato un ordine di uscire, controlliamo se gli altri processi
      * abbiano finito */
-    if (*shUser.stop < 0) {
+    if (*sh.stop < 0) {
         /* Contiamo il numero di processi che non hanno finito */
-        for (j = 0; j < cfgUser.SO_USERS_NUM; j++) {
-            if (shUser.usersPIDs[j].status != PROCESS_FINISHED &&
-                shUser.usersPIDs[j].status != PROCESS_FINISHED_PREMATURELY)
+        for (j = 0; j < cfg.SO_USERS_NUM; j++) {
+            if (sh.usersPIDs[j].status != PROCESS_FINISHED &&
+                sh.usersPIDs[j].status != PROCESS_FINISHED_PREMATURELY)
                 k++;
         }
 
         /* Se non ne esistono più, facciamo terminare i nodi. */
         if (k == 0) {
-            *shUser.stop = FINISHED;
+            *sh.stop = FINISHED;
         }
     }
 
     /* Detach di tutte le shared memory */
-    shmdt_error_checking(shUser.libroMastro);
-    shmdt_error_checking(shUser.readCounter);
-    shmdt_error_checking(shUser.usersPIDs);
-    shmdt_error_checking(shUser.nodePIDs);
-    shmdt_error_checking(shUser.stop);
-
-    /* Chiusura delle code di messaggi utilizzate */
-    msgctl(uIDUser, IPC_RMID, NULL);
+    shmdt_error_checking(sh.ledger);
+    shmdt_error_checking(sh.readCounter);
+    shmdt_error_checking(sh.usersPIDs);
+    shmdt_error_checking(sh.nodePIDs);
+    shmdt_error_checking(sh.stop);
 }

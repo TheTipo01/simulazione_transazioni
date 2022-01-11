@@ -10,7 +10,7 @@ struct Transazione {
     time_t timestamp;
 
     /* L'utente implicito che ha generato la transazione */
-    int sender;
+    pid_t sender;
 
     /* L'utente destinatario della somma di denaro */
     unsigned int receiver;
@@ -58,7 +58,6 @@ typedef struct ProcessoUser {
 
 typedef struct Blocco {
     struct Transazione transazioni[SO_BLOCK_SIZE];
-    int freeBlock;
 } Blocco;
 
 struct SharedMemoryID {
@@ -68,14 +67,16 @@ struct SharedMemoryID {
     int readCounter;
     int stop;
     int sem;
+    int freeBlock;
 };
 
 struct SharedMemory {
-    Blocco *libroMastro;
-    unsigned int *readCounter;
-    ProcessoUser *usersPIDs;
+    Blocco *ledger;
     ProcessoNode *nodePIDs;
+    ProcessoUser *usersPIDs;
+    unsigned int *readCounter;
     int *stop;
+    int *freeBlock;
 };
 
 #endif
