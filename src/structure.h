@@ -66,8 +66,8 @@ struct SharedMemoryID {
     int usersPIDs;
     int readCounter;
     int stop;
-    int sem;
     int freeBlock;
+    int sem;
 };
 
 struct SharedMemory {

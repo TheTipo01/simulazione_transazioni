@@ -59,6 +59,7 @@ void startNode(unsigned int nodePosition) {
             num_bytes = msgrcv(sh.nodePIDs[nodePosition].msgID, &tRcv, msg_size(), 1, 0);
             TEST_ERROR;
             fprintf(stdout, "Received message from %d. Byte %ld\n", tRcv.transazione.sender, num_bytes);
+            fflush(stdout);
 
             transactionPool[last].quantity = tRcv.transazione.quantity * ((100 - tRcv.transazione.reward) / 100);
             transactionPool[last].reward = tRcv.transazione.reward;
@@ -71,6 +72,7 @@ void startNode(unsigned int nodePosition) {
         } while ((last % (SO_BLOCK_SIZE - 1)) != 0 && last != cfg.SO_TP_SIZE);
 
         fprintf(stdout, "fuck this shit i'm out; last=%d blockreward=%d\n", last, blockReward);
+        fflush(stdout);
 
         /*
          * Passo successivo: creazione del blocco avente SO_BLOCK_SIZE-1 transazioni presenti nella TP.
@@ -107,6 +109,7 @@ void startNode(unsigned int nodePosition) {
             /* Se la TP è piena, chiudiamo la coda di messaggi, in modo che il nodo non possa più accettare transazioni. */
             msgctl(sh.nodePIDs[nodePosition].msgID, IPC_RMID, NULL);
         }
+        fflush(stdout);
     }
 
     /* Cleanup prima di uscire */
@@ -114,11 +117,11 @@ void startNode(unsigned int nodePosition) {
     /* Impostazione dello stato del nostro processo */
     sh.nodePIDs[nodePosition].status = PROCESS_FINISHED;
 
-    /* Detach di tutte le shared memory */
+    /* Detach di tutte le shared memory
     shmdt_error_checking(sh.nodePIDs);
     shmdt_error_checking(sh.usersPIDs);
     shmdt_error_checking(sh.ledger);
-    shmdt_error_checking(sh.stop);
+    shmdt_error_checking(sh.stop);*/
 
     /* E liberiamo la memoria allocata con malloc */
     free(transactionPool);

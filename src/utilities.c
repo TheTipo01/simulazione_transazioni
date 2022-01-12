@@ -3,6 +3,7 @@
 
 #include <sys/shm.h>
 #include <errno.h>
+#include <time.h>
 #include "utilities.h"
 #include "../vendor/libsem.h"
 

@@ -84,7 +84,7 @@ void transactionGenerator(int signal) {
 }
 
 void startUser(unsigned int index) {
-    int sig, j, k = 0, cont = 0, semcheck;
+    int sig, j, k = 0, cont = 0;
     long wt;
     sigset_t wset;
 
@@ -154,6 +154,8 @@ void startUser(unsigned int index) {
             sigwait(&wset, &sig);
         }
 
+        fflush(stdout);
+
         sem_release(ids.sem, (int) (FINE_SEMAFORI + usrPosition));
     }
 
@@ -180,10 +182,10 @@ void startUser(unsigned int index) {
         }
     }
 
-    /* Detach di tutte le shared memory */
+    /* Detach di tutte le shared memory
     shmdt_error_checking(sh.ledger);
     shmdt_error_checking(sh.readCounter);
     shmdt_error_checking(sh.usersPIDs);
     shmdt_error_checking(sh.nodePIDs);
-    shmdt_error_checking(sh.stop);
+    shmdt_error_checking(sh.stop);*/
 }

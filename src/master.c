@@ -28,7 +28,7 @@
 
 int main(int argc, char *argv[]) {
     unsigned int execTime = 0;
-    int i, j = 0, currentPid, status;
+    int i, cont = 0, currentPid, status;
     sigset_t wset;
 
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -39,8 +39,6 @@ int main(int argc, char *argv[]) {
     attach_shared_memory();
 
     *sh.stop = -1;
-    *sh.freeBlock = 0;
-    *sh.readCounter = 0;
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
@@ -64,7 +62,6 @@ int main(int argc, char *argv[]) {
                 sh.nodePIDs[i].status = PROCESS_WAITING;
                 sh.nodePIDs[i].transactions = 0;
                 sh.nodePIDs[i].msgID = msgget(IPC_PRIVATE, IPC_CREAT | PERMS);
-                fprintf(stdout, "%d\n", sh.nodePIDs[i].msgID);
         }
     }
 
@@ -104,15 +101,13 @@ int main(int argc, char *argv[]) {
         }
 
         shmdt_error_checking(sh.stop);
-        return 0;
+        exit(EXIT_SUCCESS);
     }
 
-/*
-    Aspettiamo che i processi finiscano
+    /* Aspettiamo che i processi finiscano
     for(i = 0; i < cfg.SO_USERS_NUM; i++) {
         waitpid(sh.usersPIDs[i].pid, &status, 0);
-    }
- */
+    }*/
 
     waitpid(-1, &status, 0);
 
@@ -151,9 +146,9 @@ int main(int argc, char *argv[]) {
 
     /* Stampa degli utenti terminati a causa delle molteplici transazioni fallite */
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
-        if (sh.usersPIDs[i].status == PROCESS_FINISHED_PREMATURELY) j++;
+        if (sh.usersPIDs[i].status == PROCESS_FINISHED_PREMATURELY) cont++;
     }
-    fprintf(stdout, "Numero di processi utente terminati prematuramente : %d\n\n", j);
+    fprintf(stdout, "Numero di processi utente terminati prematuramente : %d\n\n", cont);
 
     /* Stampa del numero di blocchi nel libro mastro */
     fprintf(stdout, "Numero di blocchi nel libro mastro: %d\n\n", *sh.freeBlock);
@@ -164,7 +159,7 @@ int main(int argc, char *argv[]) {
         fprintf(stdout, "       #%d, transactions = %d\n", sh.nodePIDs[i].pid, sh.nodePIDs[i].transactions);
     }
 
-    sleeping(1000000000);
+    fflush(stdout);
 
     fprintf(stdout, "cleanup starting \n");
     /* Cleanup prima di uscire: detach di tutte le shared memory, e impostazione dello stato del nostro processo */
@@ -176,6 +171,7 @@ int main(int argc, char *argv[]) {
     shmctl(ids.usersPIDs, IPC_RMID, NULL);
     shmctl(ids.readCounter, IPC_RMID, NULL);
     shmctl(ids.stop, IPC_RMID, NULL);
+    shmctl(ids.freeBlock, IPC_RMID, NULL);
 
     sleeping(1000000000);
 
