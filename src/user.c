@@ -16,9 +16,9 @@
 int lastBlockCheckedUser = 0, failedTransactionUser = 0;
 unsigned int usrPosition;
 
-unsigned int calcEntrate(int semID, Blocco *lm, unsigned int *readCounter) {
+double calcEntrate(int semID, struct Blocco *lm, unsigned int *readCounter) {
     int pid = getpid(), j;
-    unsigned int tmpBalance = 0;
+    double tmpBalance = 0;
 
     /* Dobbiamo eseguire una lettura del libro mastro, quindi impostiamo il
      * semaforo di lettura */
@@ -85,7 +85,6 @@ void transactionGenerator(int signal) {
 
 void startUser(unsigned int index) {
     int sig, j, k = 0, cont = 0;
-    long wt;
     sigset_t wset;
 
     /* Copia parametri in variabili globali */
@@ -113,7 +112,7 @@ void startUser(unsigned int index) {
     signal(SIGUSR2, transactionGenerator);
 
     while (failedTransactionUser < cfg.SO_RETRY && get_stop_value(sh.stop, sh.stopRead) == -1) {
-        sem_reserve(ids.sem, FINE_SEMAFORI + usrPosition);
+        sem_reserve(ids.sem, (int) (FINE_SEMAFORI + usrPosition));
         TEST_ERROR;
 
         /* Calcolo del bilancio dell'utente: calcoliamo solo le entrate, in quanto
@@ -125,14 +124,11 @@ void startUser(unsigned int index) {
             transactionGenerator(0);
             cont++;
 
-            wt = random() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
-                 cfg.SO_MIN_TRANS_GEN_NSEC;
-            sleeping(wt);
+            sleeping(random() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
+                     cfg.SO_MIN_TRANS_GEN_NSEC);
         } else {
-
-            wt = random() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
-                 cfg.SO_MIN_TRANS_GEN_NSEC;
-            sleeping(wt);
+            sleeping(random() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
+                     cfg.SO_MIN_TRANS_GEN_NSEC);
 
             /* Aspettiamo finchè l'utente non riceve una transazione */
             sigwait(&wset, &sig);

@@ -11,7 +11,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <errno.h>
 #include <string.h>
 #include <signal.h>
 #include <sys/types.h>
@@ -27,19 +26,24 @@
 
 int main(int argc, char *argv[]) {
     unsigned int execTime = 0;
-    int i, cont = 0, currentPid, status;
+    int i, cont, currentPid, status;
     sigset_t wset;
 
+    /* Disattiviamo il buffering di stdout per stampare subito lo stato della simulazione */
     setvbuf(stdout, NULL, _IONBF, 0);
 
+    /* Lettura del file di configurazione a partire dalle variabili d'ambiente */
     cfg = newConfig();
 
+    /* Ottenimento degli id per la shared memory */
     get_shared_ids();
+    /* E successivo attach */
     attach_shared_memory();
 
     /* In questo punto del codice solo il processo master può leggere/scrivere su stop */
     *sh.stop = -1;
 
+    /* I semafori usati li usiamo come mutex: inizializziamo i loro valori ad 1 */
     for (i = 0; i < NUM_SEMAFORI; i++) {
         semctl(ids.sem, i, SETVAL, 1);
     }
@@ -93,11 +97,10 @@ int main(int argc, char *argv[]) {
      * Se finisce il tempo/tutti i processi utente finiscono/il libro mastro è pieno, terminare la simulazione.
      */
     if (!fork()) {
-        while (execTime < cfg.SO_SIM_SEC && get_stop_value(sh.stop, sh.stopRead) == -1) {
-            sleeping(1000000000);
-            printStatus(sh.nodePIDs, sh.usersPIDs, &cfg);
+        do {
+            printStatus(sh.nodePIDs, sh.usersPIDs);
             execTime++;
-        }
+        } while (execTime < cfg.SO_SIM_SEC - 1 && get_stop_value(sh.stop, sh.stopRead) == -1 && !sleeping(1000000000));
 
         if (execTime == cfg.SO_SIM_SEC) {
             sem_reserve(ids.sem, STOP_WRITE);
@@ -135,14 +138,14 @@ int main(int argc, char *argv[]) {
     /* Stampa dello stato e del bilancio di ogni processo utente */
     fprintf(stdout, "PROCESSI UTENTE:\n");
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
-        fprintf(stdout, "       #%d, balance = %d\n", sh.usersPIDs[i].pid, sh.usersPIDs[i].balance);
+        fprintf(stdout, "       #%d, balance = %f\n", sh.usersPIDs[i].pid, sh.usersPIDs[i].balance);
     }
     fprintf(stdout, "\n");
 
     /* Stampa del bilancio di ogni processo nodo */
     fprintf(stdout, "PROCESSI NODO:\n");
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
-        fprintf(stdout, "       #%d, balance = %d\n", sh.nodePIDs[i].pid, sh.nodePIDs[i].balance);
+        fprintf(stdout, "       #%d, balance = %f\n", sh.nodePIDs[i].pid, sh.nodePIDs[i].balance);
     }
     fprintf(stdout, "\n");
 
@@ -162,21 +165,8 @@ int main(int argc, char *argv[]) {
         fprintf(stdout, "       #%d, transactions = %d\n", sh.nodePIDs[i].pid, sh.nodePIDs[i].transactions);
     }
 
-    fprintf(stdout, "cleanup starting %s\n", formatTime(time(NULL)));
-
-    fflush(stdout);
     /* Cleanup prima di uscire: detach di tutte le shared memory, e impostazione dello stato del nostro processo */
-    shmdt_error_checking(sh.nodePIDs);
-    shmdt_error_checking(sh.usersPIDs);
-    shmdt_error_checking(sh.ledger);
-    semctl(ids.sem, 0, IPC_RMID);
-    shmctl(ids.nodePIDs, IPC_RMID, NULL);
-    shmctl(ids.usersPIDs, IPC_RMID, NULL);
-    shmctl(ids.ledgerRead, IPC_RMID, NULL);
-    shmctl(ids.stop, IPC_RMID, NULL);
-    shmctl(ids.freeBlock, IPC_RMID, NULL);
 
-    sleeping(1000000000);
 
     return 0;
 }

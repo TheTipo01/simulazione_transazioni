@@ -5,20 +5,13 @@
 #include "config.h"
 #include "utilities.c"
 
-/* Macro per il controllo del detach della memoria condivisa. Se l'address ritornato dalla funzione shmdt è uguale a -1,
- * si esce dal programma segnalando l'errore. */
+/*
+ * Macro per il controllo del detach della memoria condivisa. Se l'address ritornato dalla funzione shmdt è uguale a -1,
+ * si esce dal programma segnalando l'errore.
+ */
 #define shmdt_error_checking(addr) do \
         {                              \
         if (shmdt((addr)) == -1) \
-        { \
-            fprintf(stderr, "%s: %d. Errore in shmdt #%03d: %s\n", __FILE__, __LINE__, errno, strerror(errno)); \
-            exit(EXIT_FAILURE); \
-        } \
-        } while(0)
-
-#define msgget_error_checking(addr) do \
-        {                              \
-        if ((addr) < 0) \
         { \
             fprintf(stderr, "%s: %d. Errore in shmdt #%03d: %s\n", __FILE__, __LINE__, errno, strerror(errno)); \
             exit(EXIT_FAILURE); \
@@ -33,26 +26,34 @@
         } \
         } while (0)
 
-/* Funzione per il controllo dell'assegnazione della memoria condivida. Se l'address ritornato dalla funzione shmget
- * è uguale a -1, si esce dal programma segnalando l'errore.*/
+/*
+ * Funzione per il controllo dell'assegnazione della memoria condivida. Se l'address ritornato dalla funzione shmget
+ * è uguale a -1, si esce dal programma segnalando l'errore.
+ */
 void shmget_error_checking(int id);
 
-/* Semaforo per la lettura. Ha priorità rispetto al semaforo di scrittura: quando il node ha bisogno di scrivere
+/*
+ * Semaforo per la lettura. Ha priorità rispetto al semaforo di scrittura: quando il node ha bisogno di scrivere
  * sul libro mastro, deve aspettare che gli altri processi finiscano di eseguire la lettura, in modo da evitare
- * inconsistenze sui dati letti. */
+ * inconsistenze sui dati letti.
+ */
 void read_start(int sem_id, unsigned int *readCounter, int read, int write);
 
 void read_end(int sem_id, unsigned int *readCounter, int read, int write);
 
-/* Funzione utile per stampare lo stato di ogni processo. Vengono stampati:
+/*
+ * Funzione utile per stampare lo stato di ogni processo. Vengono stampati:
  *      N° di processi utente attivi
  *      N° di processi nodo attivi
  *      Processo utente/nodo con bilancio più alto
- *      Processo utente/nodo con bilancio più basso */
-void printStatus(ProcessoNode *nodePIDs, ProcessoUser *usersPIDs, Config *cfg);
+ *      Processo utente/nodo con bilancio più basso
+ */
+void printStatus(struct ProcessoNode *nodePIDs, struct ProcessoUser *usersPIDs);
 
-void sleeping(long waitingTime);
+/* Funzione wrapper per nanosleep. */
+int sleeping(long waitingTime);
 
+/* Funzione che dato un tempo time_t restituisce una stringa formattata a partire dal timestamp. */
 char *formatTime(time_t rawtime);
 
 #endif

@@ -2,37 +2,36 @@
 
 #include "config.h"
 #include "enum.c"
-#include "../vendor/libsem.h"
 #include "structure.h"
 #include "utilities.h"
+#include "node.h"
 
 #include <signal.h>
 #include <sys/msg.h>
-#include <sys/shm.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <time.h>
 
 #define BLOCK_SENDER -1
 
-struct Transazione generateReward(int pos, struct Transazione *tp, int totrw) {
-    struct Transazione rewtran;
+struct Transazione generateReward(double tot_reward) {
+    struct Transazione reward_tran;
 
-    rewtran.timestamp = time(NULL);
-    rewtran.sender = BLOCK_SENDER;
-    rewtran.receiver = getpid();
-    rewtran.quantity = totrw;
-    rewtran.reward = 0;
+    reward_tran.timestamp = time(NULL);
+    reward_tran.sender = BLOCK_SENDER;
+    reward_tran.receiver = getpid();
+    reward_tran.quantity = tot_reward;
+    reward_tran.reward = 0;
 
-    return rewtran;
+    return reward_tran;
 }
 
 void startNode(unsigned int nodePosition) {
     struct Transazione *transactionPool = malloc(cfg.SO_TP_SIZE * sizeof(struct Transazione));
-    int sig, i = 0, last = 0, blockPointer, blockReward;
+    int sig, i, last = 0, blockPointer;
+    double blockReward;
     struct Messaggio tRcv;
     sigset_t wset;
-    long wt = 0;
 
     setvbuf(stdout, NULL, _IONBF, 0);
 
@@ -59,13 +58,13 @@ void startNode(unsigned int nodePosition) {
             msgrcv(sh.nodePIDs[nodePosition].msgID, &tRcv, msg_size(), 1, 0);
             TEST_ERROR;
 
-            transactionPool[last].quantity = tRcv.transazione.quantity * ((100 - tRcv.transazione.reward) / 100);
+            transactionPool[last].quantity = tRcv.transazione.quantity * ((100.0 - tRcv.transazione.reward) / 100);
             transactionPool[last].reward = tRcv.transazione.reward;
             transactionPool[last].sender = tRcv.transazione.sender;
             transactionPool[last].receiver = tRcv.transazione.receiver;
             transactionPool[last].timestamp = tRcv.transazione.timestamp;
-            sh.nodePIDs[nodePosition].balance += tRcv.transazione.quantity * (tRcv.transazione.reward / 100);
-            blockReward += tRcv.transazione.quantity * (tRcv.transazione.reward / 100);
+            sh.nodePIDs[nodePosition].balance += tRcv.transazione.quantity * (tRcv.transazione.reward / 100.0);
+            blockReward += tRcv.transazione.quantity * (tRcv.transazione.reward / 100.0);
             sh.nodePIDs[nodePosition].transactions++;
             last++;
         } while ((last % (SO_BLOCK_SIZE - 1)) != 0 && last != cfg.SO_TP_SIZE);
@@ -76,9 +75,8 @@ void startNode(unsigned int nodePosition) {
          */
         if (last != cfg.SO_TP_SIZE) {
             /* Simulazione elaborazione del blocco */
-            wt = random() % (cfg.SO_MAX_TRANS_PROC_NSEC + 1 - cfg.SO_MIN_TRANS_PROC_NSEC) +
-                 cfg.SO_MIN_TRANS_PROC_NSEC;
-            sleeping(wt);
+            sleeping(random() % (cfg.SO_MAX_TRANS_PROC_NSEC + 1 - cfg.SO_MIN_TRANS_PROC_NSEC) +
+                     cfg.SO_MIN_TRANS_PROC_NSEC);
 
             /* Ci riserviamo un blocco nel libro mastro aumentando il puntatore dei blocchi liberi */
             sem_reserve(ids.sem, LEDGER_WRITE);
@@ -89,14 +87,14 @@ void startNode(unsigned int nodePosition) {
                 *sh.stop = LEDGERFULL;
                 sem_release(ids.sem, STOP_WRITE);
             } else {
-                *sh.freeBlock++;
+                *sh.freeBlock += 1;
                 blockPointer = *sh.freeBlock;
 
                 /* Scriviamo i primi SO_BLOCK_SIZE-1 blocchi nel libro mastro */
                 for (i = last - (SO_BLOCK_SIZE - 1); i < last; i++) {
                     sh.ledger[blockPointer].transazioni[i] = transactionPool[i];
                 }
-                sh.ledger[blockPointer].transazioni[i + 1] = generateReward(i + 1, transactionPool, blockReward);
+                sh.ledger[blockPointer].transazioni[i + 1] = generateReward(blockReward);
             }
 
             sem_release(ids.sem, LEDGER_WRITE);

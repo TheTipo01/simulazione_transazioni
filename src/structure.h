@@ -13,10 +13,10 @@ struct Transazione {
     pid_t sender;
 
     /* L'utente destinatario della somma di denaro */
-    unsigned int receiver;
+    pid_t receiver;
 
     /* Quantità di denaro inviata */
-    unsigned int quantity;
+    double quantity;
 
     /* Denaro pagato dal sender al nodo che processa la transazione */
     unsigned int reward;
@@ -28,7 +28,7 @@ struct Messaggio {
 };
 
 /* Struttura per tenere lo stato di un processo e il suo pid */
-typedef struct ProcessoNode {
+struct ProcessoNode {
     /* PID del processo */
     pid_t pid;
 
@@ -36,16 +36,16 @@ typedef struct ProcessoNode {
     int status;
 
     /* Bilancio del processo */
-    unsigned int balance;
+    double balance;
 
     /* Numero di transazioni nella TP */
     int transactions;
 
     /* ID della coda di messaggi usata dal processo nodo per ricevere transazioni */
     int msgID;
-} ProcessoNode;
+};
 
-typedef struct ProcessoUser {
+struct ProcessoUser {
     /* PID del processo */
     pid_t pid;
 
@@ -53,12 +53,12 @@ typedef struct ProcessoUser {
     int status;
 
     /* Bilancio del processo */
-    unsigned int balance;
-} ProcessoUser;
+    double balance;
+};
 
-typedef struct Blocco {
+struct Blocco {
     struct Transazione transazioni[SO_BLOCK_SIZE];
-} Blocco;
+};
 
 struct SharedMemoryID {
     int ledger;
@@ -67,20 +67,18 @@ struct SharedMemoryID {
     int ledgerRead;
     int stop;
     int freeBlock;
-    int sem;
     int stopRead;
-    int debugString;
+    int sem;
 };
 
 struct SharedMemory {
-    Blocco *ledger;
-    ProcessoNode *nodePIDs;
-    ProcessoUser *usersPIDs;
+    struct Blocco *ledger;
+    struct ProcessoNode *nodePIDs;
+    struct ProcessoUser *usersPIDs;
     unsigned int *ledgerRead;
     unsigned int *stopRead;
     int *stop;
     int *freeBlock;
-    char *debugString;
 };
 
 #endif
