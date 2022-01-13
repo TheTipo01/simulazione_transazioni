@@ -64,19 +64,23 @@ struct SharedMemoryID {
     int ledger;
     int nodePIDs;
     int usersPIDs;
-    int readCounter;
+    int ledgerRead;
     int stop;
     int freeBlock;
     int sem;
+    int stopRead;
+    int debugString;
 };
 
 struct SharedMemory {
     Blocco *ledger;
     ProcessoNode *nodePIDs;
     ProcessoUser *usersPIDs;
-    unsigned int *readCounter;
+    unsigned int *ledgerRead;
+    unsigned int *stopRead;
     int *stop;
     int *freeBlock;
+    char *debugString;
 };
 
 #endif

@@ -3,6 +3,8 @@
 enum semafori {
     LEDGER_READ,
     LEDGER_WRITE,
+    STOP_READ,
+    STOP_WRITE,
     FINE_SEMAFORI
 };
 

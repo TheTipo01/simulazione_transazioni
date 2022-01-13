@@ -9,7 +9,6 @@
 
 #include <signal.h>
 #include <sys/msg.h>
-#include <sys/shm.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <time.h>
@@ -23,7 +22,7 @@ unsigned int calcEntrate(int semID, Blocco *lm, unsigned int *readCounter) {
 
     /* Dobbiamo eseguire una lettura del libro mastro, quindi impostiamo il
      * semaforo di lettura */
-    read_start(semID, readCounter);
+    read_start(semID, readCounter, LEDGER_READ, LEDGER_WRITE);
 
     /* Cicliamo all'interno del libro mastro per controllare ogni transazione
      * eseguita */
@@ -40,9 +39,7 @@ unsigned int calcEntrate(int semID, Blocco *lm, unsigned int *readCounter) {
     }
 
     /* Rilasciamo il semaforo di lettura a fine operazione */
-    read_end(semID, readCounter);
-
-    fprintf(stdout, "PID=%d, tmpBalance=%d\n", getpid(), tmpBalance);
+    read_end(semID, readCounter, LEDGER_READ, LEDGER_WRITE);
 
     return tmpBalance;
 }
@@ -64,12 +61,15 @@ void transactionGenerator(int signal) {
 
     msg.transazione.quantity = random() % (cfg.SO_BUDGET_INIT + 1 - 2) + 2;
 
+    /* Se abbiamo generato una quantità superiore al bilancio, prendiamo il rimanente del bilancio */
+    if (msg.transazione.quantity > sh.usersPIDs[usrPosition].balance) {
+        msg.transazione.quantity = sh.usersPIDs[usrPosition].balance - 2;
+    }
+
     msg.m_type = 1;
 
     /* Invio al nodo la transazione */
     feedback = msgsnd(sh.nodePIDs[targetNode].msgID, &msg, msg_size(), 0);
-    fprintf(stdout, "feedback: %d - quantity %d\n", feedback, msg.transazione.quantity);
-    fflush(stdout);
 
     if (feedback == -1) {
         /* Se la transazione fallisce, aumentiamo il contatore delle transazioni
@@ -88,23 +88,11 @@ void startUser(unsigned int index) {
     long wt;
     sigset_t wset;
 
-    setvbuf(stdout, NULL, _IONBF, SHM_W | SHM_R);
-
     /* Copia parametri in variabili globali */
     usrPosition = index;
 
     /* Seeding di rand con il pid del processo */
     srandom(getpid());
-
-    /*
-     * Booleano abbassato quando dobbiamo terminare i processi, per gracefully
-     * terminare tutto
-     */
-    sh.freeBlock = shmat(ids.freeBlock, NULL, 0);
-    TEST_ERROR;
-
-    sh.stop = shmat(ids.stop, NULL, 0);
-    TEST_ERROR;
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
@@ -118,33 +106,29 @@ void startUser(unsigned int index) {
      * tutti gli altri child
      */
     sigwait(&wset, &sig);
+
     sh.usersPIDs[usrPosition].status = PROCESS_RUNNING;
 
     /* Aggiunge l'handler del segnale SIGUSR2, designato per far scatenare la generazione di una transazione */
     signal(SIGUSR2, transactionGenerator);
 
-    while (failedTransactionUser < cfg.SO_RETRY && *sh.stop == -1) {
-        sem_reserve(ids.sem, (int) (FINE_SEMAFORI + usrPosition));
+    while (failedTransactionUser < cfg.SO_RETRY && get_stop_value(sh.stop, sh.stopRead) == -1) {
+        sem_reserve(ids.sem, FINE_SEMAFORI + usrPosition);
         TEST_ERROR;
 
         /* Calcolo del bilancio dell'utente: calcoliamo solo le entrate, in quanto
          * le uscite vengono registrate dopo */
-        fprintf(stdout, "PID=%d, pre-update: %d\n", getpid(), sh.usersPIDs[usrPosition].balance);
         sh.usersPIDs[usrPosition].balance +=
-                calcEntrate(ids.sem, sh.ledger, sh.readCounter);
-        fprintf(stdout, "PID=%d, post-update: %d\n", getpid(), sh.usersPIDs[usrPosition].balance);
+                calcEntrate(ids.sem, sh.ledger, sh.ledgerRead);
 
         if (sh.usersPIDs[usrPosition].balance >= 2) {
-            fprintf(stdout, "PID=%d: generazioni transazione numero %d - bilancio %d\n", getpid(), cont,
-                    sh.usersPIDs[usrPosition].balance);
-            transactionGenerator(2580);
+            transactionGenerator(0);
             cont++;
 
             wt = random() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
                  cfg.SO_MIN_TRANS_GEN_NSEC;
             sleeping(wt);
         } else {
-            fprintf(stdout, "PID=%d: finiti soldi\n", getpid());
 
             wt = random() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
                  cfg.SO_MIN_TRANS_GEN_NSEC;
@@ -154,7 +138,7 @@ void startUser(unsigned int index) {
             sigwait(&wset, &sig);
         }
 
-        fflush(stdout);
+        fflush(stderr);
 
         sem_release(ids.sem, (int) (FINE_SEMAFORI + usrPosition));
     }
@@ -168,7 +152,7 @@ void startUser(unsigned int index) {
 
     /* Se non c'è stato un ordine di uscire, controlliamo se gli altri processi
      * abbiano finito */
-    if (*sh.stop < 0) {
+    if (get_stop_value(sh.stop, sh.stopRead) < 0) {
         /* Contiamo il numero di processi che non hanno finito */
         for (j = 0; j < cfg.SO_USERS_NUM; j++) {
             if (sh.usersPIDs[j].status != PROCESS_FINISHED &&
@@ -178,14 +162,9 @@ void startUser(unsigned int index) {
 
         /* Se non ne esistono più, facciamo terminare i nodi. */
         if (k == 0) {
+            sem_reserve(ids.sem, STOP_WRITE);
             *sh.stop = FINISHED;
+            sem_release(ids.sem, STOP_WRITE);
         }
     }
-
-    /* Detach di tutte le shared memory
-    shmdt_error_checking(sh.ledger);
-    shmdt_error_checking(sh.readCounter);
-    shmdt_error_checking(sh.usersPIDs);
-    shmdt_error_checking(sh.nodePIDs);
-    shmdt_error_checking(sh.stop);*/
 }

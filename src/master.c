@@ -4,7 +4,6 @@
 #include "user.h"
 #include "node.h"
 #include "structure.h"
-#include "../vendor/libsem.h"
 #include "utilities.h"
 #include "shared_memory.h"
 #include "master.h"
@@ -38,7 +37,12 @@ int main(int argc, char *argv[]) {
     get_shared_ids();
     attach_shared_memory();
 
+    /* In questo punto del codice solo il processo master può leggere/scrivere su stop */
     *sh.stop = -1;
+
+    for (i = 0; i < NUM_SEMAFORI; i++) {
+        semctl(ids.sem, i, SETVAL, 1);
+    }
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
@@ -61,7 +65,7 @@ int main(int argc, char *argv[]) {
                 sh.nodePIDs[i].balance = 0;
                 sh.nodePIDs[i].status = PROCESS_WAITING;
                 sh.nodePIDs[i].transactions = 0;
-                sh.nodePIDs[i].msgID = msgget(IPC_PRIVATE, IPC_CREAT | PERMS);
+                sh.nodePIDs[i].msgID = msgget(IPC_PRIVATE, GET_FLAGS);
         }
     }
 
@@ -89,27 +93,25 @@ int main(int argc, char *argv[]) {
      * Se finisce il tempo/tutti i processi utente finiscono/il libro mastro è pieno, terminare la simulazione.
      */
     if (!fork()) {
-        sh.stop = shmat(ids.stop, NULL, 0);
-        while (execTime < cfg.SO_SIM_SEC && *sh.stop == -1) {
+        while (execTime < cfg.SO_SIM_SEC && get_stop_value(sh.stop, sh.stopRead) == -1) {
             sleeping(1000000000);
             printStatus(sh.nodePIDs, sh.usersPIDs, &cfg);
             execTime++;
         }
 
         if (execTime == cfg.SO_SIM_SEC) {
+            sem_reserve(ids.sem, STOP_WRITE);
             *sh.stop = TIMEDOUT;
+            sem_release(ids.sem, STOP_WRITE);
         }
 
-        shmdt_error_checking(sh.stop);
         exit(EXIT_SUCCESS);
     }
 
-    /* Aspettiamo che i processi finiscano
-    for(i = 0; i < cfg.SO_USERS_NUM; i++) {
-        waitpid(sh.usersPIDs[i].pid, &status, 0);
-    }*/
-
-    waitpid(-1, &status, 0);
+    /* Aspettiamo che i processi finiscano */
+    for (i = 0; i < cfg.SO_NODES_NUM + cfg.SO_USERS_NUM; i++) {
+        waitpid(-1, &status, 0);
+    }
 
     /*
      * Dopo la terminazione dei processi nodo e utente, cominciamo la terminazione della simulazione con la
@@ -117,7 +119,7 @@ int main(int argc, char *argv[]) {
      */
 
     /* Stampa della causa di terminazione della simulazione */
-    switch (*sh.stop) {
+    switch (get_stop_value(sh.stop, sh.stopRead)) {
         case LEDGERFULL:
             fprintf(stdout, "--- TERMINE SIMULAZIONE ---\nCausa terminazione: il libro mastro è pieno.\n\n");
             break;
@@ -145,6 +147,7 @@ int main(int argc, char *argv[]) {
     fprintf(stdout, "\n");
 
     /* Stampa degli utenti terminati a causa delle molteplici transazioni fallite */
+    cont = 0;
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
         if (sh.usersPIDs[i].status == PROCESS_FINISHED_PREMATURELY) cont++;
     }
@@ -159,9 +162,9 @@ int main(int argc, char *argv[]) {
         fprintf(stdout, "       #%d, transactions = %d\n", sh.nodePIDs[i].pid, sh.nodePIDs[i].transactions);
     }
 
-    fflush(stdout);
+    fprintf(stdout, "cleanup starting %s\n", formatTime(time(NULL)));
 
-    fprintf(stdout, "cleanup starting \n");
+    fflush(stdout);
     /* Cleanup prima di uscire: detach di tutte le shared memory, e impostazione dello stato del nostro processo */
     shmdt_error_checking(sh.nodePIDs);
     shmdt_error_checking(sh.usersPIDs);
@@ -169,7 +172,7 @@ int main(int argc, char *argv[]) {
     semctl(ids.sem, 0, IPC_RMID);
     shmctl(ids.nodePIDs, IPC_RMID, NULL);
     shmctl(ids.usersPIDs, IPC_RMID, NULL);
-    shmctl(ids.readCounter, IPC_RMID, NULL);
+    shmctl(ids.ledgerRead, IPC_RMID, NULL);
     shmctl(ids.stop, IPC_RMID, NULL);
     shmctl(ids.freeBlock, IPC_RMID, NULL);
 

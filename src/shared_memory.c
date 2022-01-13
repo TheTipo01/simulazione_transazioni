@@ -1,7 +1,6 @@
 #include "master.h"
 #include "shared_memory.h"
 
-#define PERMS 0666
 #define GET_FLAGS IPC_CREAT | IPC_EXCL | SHM_R | SHM_W
 #define NUM_SEMAFORI FINE_SEMAFORI + cfg.SO_USERS_NUM + 1
 
@@ -11,8 +10,8 @@ void get_shared_ids() {
     shmget_error_checking(ids.ledger);
 
     /* Allocazione del semaforo di lettura come variabile in memoria condivisa */
-    ids.readCounter = shmget(IPC_PRIVATE, sizeof(unsigned int), GET_FLAGS);
-    shmget_error_checking(ids.readCounter);
+    ids.ledgerRead = shmget(IPC_PRIVATE, sizeof(unsigned int), GET_FLAGS);
+    shmget_error_checking(ids.ledgerRead);
 
     /* Allocazione dell'array dello stato dei nodi */
     ids.nodePIDs = shmget(IPC_PRIVATE, cfg.SO_NODES_NUM * sizeof(ProcessoNode), GET_FLAGS);
@@ -30,8 +29,15 @@ void get_shared_ids() {
     ids.freeBlock = shmget(IPC_PRIVATE, sizeof(int), GET_FLAGS);
     shmget_error_checking(ids.freeBlock);
 
+    /* Allocazione del puntatore al primo blocco libero del libro mastro */
+    ids.stopRead = shmget(IPC_PRIVATE, sizeof(unsigned int), GET_FLAGS);
+    shmget_error_checking(ids.stopRead);
+
+    ids.debugString = shmget(IPC_PRIVATE, sizeof(char *), GET_FLAGS);
+    shmget_error_checking(ids.debugString);
+
     /* Inizializziamo i semafori che usiamo */
-    ids.sem = semget(IPC_PRIVATE, NUM_SEMAFORI, IPC_CREAT | PERMS);
+    ids.sem = semget(IPC_PRIVATE, NUM_SEMAFORI, GET_FLAGS);
     TEST_ERROR;
 }
 
@@ -41,7 +47,7 @@ void attach_shared_memory() {
     TEST_ERROR;
 
     /* Inizializziamo il semaforo di lettura a 0 */
-    sh.readCounter = shmat(ids.readCounter, NULL, 0);
+    sh.ledgerRead = shmat(ids.ledgerRead, NULL, 0);
     TEST_ERROR;
 
     /* Collegamento all'array dello stato dei processi */
@@ -58,5 +64,11 @@ void attach_shared_memory() {
 
     /* Puntatore al primo blocco disponibile per la scrittura nel ledger */
     sh.freeBlock = shmat(ids.freeBlock, NULL, 0);
+    TEST_ERROR;
+
+    sh.stopRead = shmat(ids.stopRead, NULL, 0);
+    TEST_ERROR;
+
+    sh.debugString = shmat(ids.debugString, NULL, 0);
     TEST_ERROR;
 }

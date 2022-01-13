@@ -5,29 +5,45 @@
 #include <errno.h>
 #include <time.h>
 #include "utilities.h"
+#include "master.h"
+#include "enum.c"
 #include "../vendor/libsem.h"
 
 #define clear() fprintf(stdout, "\033[1;1H\033[2J")
 #define msg_size() sizeof(struct Messaggio) - sizeof(long)
 
-void read_start(int sem_id, unsigned int *readCounter) {
-    sem_reserve(sem_id, LEDGER_READ);
+void read_start(int sem_id, unsigned int *readCounter, int read, int write) {
+    sem_reserve(sem_id, read);
     *readCounter += 1;
 
     if (*readCounter == 1) {
-        sem_reserve(sem_id, LEDGER_WRITE);
+        sem_reserve(sem_id, write);
     }
-    sem_release(sem_id, LEDGER_READ);
+    sem_release(sem_id, read);
 }
 
-void read_end(int sem_id, unsigned int *readCounter) {
-    sem_reserve(sem_id, LEDGER_READ);
+void read_end(int sem_id, unsigned int *readCounter, int read, int write) {
+    sem_reserve(sem_id, read);
     *readCounter -= 1;
 
     if (*readCounter == 0) {
-        sem_release(sem_id, LEDGER_WRITE);
+        sem_release(sem_id, write);
     }
-    sem_release(sem_id, LEDGER_READ);
+    sem_release(sem_id, read);
+}
+
+int get_stop_value(int *stop, unsigned int *readCounter) {
+    int tmp;
+    read_start(ids.sem, readCounter, STOP_READ, STOP_WRITE);
+    tmp = *stop;
+    read_end(ids.sem, readCounter, STOP_READ, STOP_WRITE);
+    return tmp;
+}
+
+char *formatTime(time_t rawtime) {
+    struct tm *timeinfo;
+    timeinfo = localtime(&rawtime);
+    return asctime(timeinfo);
 }
 
 void printStatus(ProcessoNode *nodePIDs, ProcessoUser *usersPIDs, Config *cfg) {
@@ -73,7 +89,8 @@ void printStatus(ProcessoNode *nodePIDs, ProcessoUser *usersPIDs, Config *cfg) {
     }
     fprintf(stdout, "\nNumero di processi utente attivi: %d\n", activeUsers);
     fprintf(stdout, "Processo utente con bilancio più alto: #%d, status = %s, balance = %d\n", maxPid, maxStat, maxBal);
-    /*fprintf(stdout, "Processo utente con bilancio più basso: #%d, status = %s, balance = %d\n", minPid, minStat, minBal);*/
+    fprintf(stdout, "Processo utente con bilancio più basso: #%d, status = %s, balance = %d\n", minPid, minStat,
+            minBal);
 
     maxBal = 0;
     minBal = cfg->SO_BUDGET_INIT;
@@ -110,8 +127,13 @@ void printStatus(ProcessoNode *nodePIDs, ProcessoUser *usersPIDs, Config *cfg) {
     fprintf(stdout, "Processo nodo con bilancio più alto: #%d, status = %s, balance = %d\n", maxPid, maxStat, maxBal);
     fprintf(stdout, "Processo nodo con bilancio più basso: #%d, status = %s, balance = %d\n\n", minPid, minStat,
             minBal);
-    fprintf(stdout, "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
-    clear();
+
+    fprintf(stdout, "Transazioni effettuate dai nodi:\n");
+    for (i = 0; i < cfg->SO_NODES_NUM; i++) {
+        fprintf(stdout, "#%d   transactions = %d\n", nodePIDs[i].pid, nodePIDs[i].transactions);
+    }
+
+    fprintf(stdout, "\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
 }
 
 void shmget_error_checking(int id) {
@@ -127,6 +149,5 @@ void sleeping(long waitingTime) {
     requested_time.tv_nsec = waitingTime % 1000000000;
     nanosleep(&requested_time, NULL);
 }
-
 
 #endif

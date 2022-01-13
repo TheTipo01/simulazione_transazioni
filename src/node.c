@@ -32,7 +32,7 @@ void startNode(unsigned int nodePosition) {
     int sig, i = 0, last = 0, blockPointer, blockReward;
     struct Messaggio tRcv;
     sigset_t wset;
-    long num_bytes, wt = 0;
+    long wt = 0;
 
     setvbuf(stdout, NULL, _IONBF, 0);
 
@@ -52,14 +52,12 @@ void startNode(unsigned int nodePosition) {
      */
     sigwait(&wset, &sig);
     sh.nodePIDs[nodePosition].status = PROCESS_RUNNING;
-    while (*sh.stop < 0 && last != cfg.SO_TP_SIZE) {
+    while (get_stop_value(sh.stop, sh.stopRead) < 0 && last != cfg.SO_TP_SIZE) {
         /* Riceve SO_TP_SIZE transazioni  */
         blockReward = 0;
         do {
-            num_bytes = msgrcv(sh.nodePIDs[nodePosition].msgID, &tRcv, msg_size(), 1, 0);
+            msgrcv(sh.nodePIDs[nodePosition].msgID, &tRcv, msg_size(), 1, 0);
             TEST_ERROR;
-            fprintf(stdout, "Received message from %d. Byte %ld\n", tRcv.transazione.sender, num_bytes);
-            fflush(stdout);
 
             transactionPool[last].quantity = tRcv.transazione.quantity * ((100 - tRcv.transazione.reward) / 100);
             transactionPool[last].reward = tRcv.transazione.reward;
@@ -68,11 +66,9 @@ void startNode(unsigned int nodePosition) {
             transactionPool[last].timestamp = tRcv.transazione.timestamp;
             sh.nodePIDs[nodePosition].balance += tRcv.transazione.quantity * (tRcv.transazione.reward / 100);
             blockReward += tRcv.transazione.quantity * (tRcv.transazione.reward / 100);
+            sh.nodePIDs[nodePosition].transactions++;
             last++;
         } while ((last % (SO_BLOCK_SIZE - 1)) != 0 && last != cfg.SO_TP_SIZE);
-
-        fprintf(stdout, "fuck this shit i'm out; last=%d blockreward=%d\n", last, blockReward);
-        fflush(stdout);
 
         /*
          * Passo successivo: creazione del blocco avente SO_BLOCK_SIZE-1 transazioni presenti nella TP.
@@ -89,7 +85,9 @@ void startNode(unsigned int nodePosition) {
 
             /* Ledger pieno: usciamo */
             if (*sh.freeBlock == SO_REGISTRY_SIZE) {
+                sem_reserve(ids.sem, STOP_WRITE);
                 *sh.stop = LEDGERFULL;
+                sem_release(ids.sem, STOP_WRITE);
             } else {
                 *sh.freeBlock++;
                 blockPointer = *sh.freeBlock;
@@ -117,12 +115,6 @@ void startNode(unsigned int nodePosition) {
     /* Impostazione dello stato del nostro processo */
     sh.nodePIDs[nodePosition].status = PROCESS_FINISHED;
 
-    /* Detach di tutte le shared memory
-    shmdt_error_checking(sh.nodePIDs);
-    shmdt_error_checking(sh.usersPIDs);
-    shmdt_error_checking(sh.ledger);
-    shmdt_error_checking(sh.stop);*/
-
-    /* E liberiamo la memoria allocata con malloc */
+    /* Liberiamo la memoria allocata con malloc */
     free(transactionPool);
 }
