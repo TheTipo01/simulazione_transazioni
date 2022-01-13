@@ -11,12 +11,14 @@
  * Oltre ai valori di configurazione, ha bisogno degli ID per accedere alle memorie condivise, e un puntatore al proprio
  * PID nella lista condivisa dei PID dei processi nodo.
  */
-void startNode(unsigned int nodePosition);
+void startNode(unsigned int index);
 
 /*
  * Funzione incaricata di generare l'ultima transazione di un blocco, quella contente il reward per il nodo che ha
  * elaborato le transazioni
  */
 struct Transazione generateReward(double tot_reward);
+
+void endProcess(int signum);
 
 #endif

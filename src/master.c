@@ -51,6 +51,7 @@ int main(int argc, char *argv[]) {
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
     sigaddset(&wset, SIGUSR1);
+    sigaddset(&wset, SIGUSR2);
 
     /* Mascheriamo i segnali che usiamo */
     sigprocmask(SIG_BLOCK, &wset, NULL);
@@ -107,6 +108,8 @@ int main(int argc, char *argv[]) {
             *sh.stop = TIMEDOUT;
             sem_release(ids.sem, STOP_WRITE);
         }
+
+        kill(0, SIGUSR2);
 
         exit(EXIT_SUCCESS);
     }
@@ -165,8 +168,8 @@ int main(int argc, char *argv[]) {
         fprintf(stdout, "       #%d, transactions = %d\n", sh.nodePIDs[i].pid, sh.nodePIDs[i].transactions);
     }
 
-    /* Cleanup prima di uscire: detach di tutte le shared memory, e impostazione dello stato del nostro processo */
-
+    /* Cleanup finale */
+    detach_and_delete();
 
     return 0;
 }

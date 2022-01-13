@@ -1,10 +1,11 @@
 #define _GNU_SOURCE
 
 #include "config.h"
-#include "enum.c"
+#include "enum.h"
 #include "structure.h"
 #include "utilities.h"
 #include "node.h"
+#include "rwlock.h"
 
 #include <signal.h>
 #include <sys/msg.h>
@@ -13,6 +14,19 @@
 #include <time.h>
 
 #define BLOCK_SENDER -1
+
+unsigned int nodePosition;
+struct Transazione *transactionPool;
+
+void endNode(int signum){
+    switch(signum){
+        case SIGUSR2:
+            sh.nodePIDs[nodePosition].status = PROCESS_FINISHED;
+            free(transactionPool);
+            fprintf(stderr, "Node #%d terminated.", getpid());
+            exit(EXIT_SUCCESS);
+    }
+}
 
 struct Transazione generateReward(double tot_reward) {
     struct Transazione reward_tran;
@@ -26,30 +40,35 @@ struct Transazione generateReward(double tot_reward) {
     return reward_tran;
 }
 
-void startNode(unsigned int nodePosition) {
-    struct Transazione *transactionPool = malloc(cfg.SO_TP_SIZE * sizeof(struct Transazione));
+void startNode(unsigned int index) {
     int sig, i, last = 0, blockPointer;
     double blockReward;
     struct Messaggio tRcv;
+    struct sigaction sa;
     sigset_t wset;
-
-    setvbuf(stdout, NULL, _IONBF, 0);
 
     /* Seeding di rand con il tempo attuale */
     srandom(getpid());
 
+    transactionPool = malloc(cfg.SO_TP_SIZE * sizeof(struct Transazione));
+    nodePosition = index;
+
+    sa.sa_handler = endNode;
+    sigaction(SIGUSR2, &sa, NULL);
+
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
     sigaddset(&wset, SIGUSR1);
-
-    /* Mascheriamo i segnali che usiamo */
-    sigprocmask(SIG_BLOCK, &wset, NULL);
 
     /*
      * Child aspettano un segnale dal parent: possono iniziare la loro funzione solo dopo che vengono generati
      * tutti gli altri child
      */
     sigwait(&wset, &sig);
+
+    /* Mascheriamo i segnali che usiamo */
+    sigprocmask(SIG_BLOCK, &wset, NULL);
+
     sh.nodePIDs[nodePosition].status = PROCESS_RUNNING;
     while (get_stop_value(sh.stop, sh.stopRead) < 0 && last != cfg.SO_TP_SIZE) {
         /* Riceve SO_TP_SIZE transazioni  */
@@ -104,8 +123,8 @@ void startNode(unsigned int nodePosition) {
         } else {
             /* Se la TP è piena, chiudiamo la coda di messaggi, in modo che il nodo non possa più accettare transazioni. */
             msgctl(sh.nodePIDs[nodePosition].msgID, IPC_RMID, NULL);
+            sh.nodePIDs[nodePosition].status = PROCESS_WAITING;
         }
-        fflush(stdout);
     }
 
     /* Cleanup prima di uscire */

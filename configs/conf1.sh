@@ -13,4 +13,4 @@ export SO_SIM_SEC=10
 export SO_NUM_FRIENDS=3
 export SO_HOPS=10
 
-../master
+./master

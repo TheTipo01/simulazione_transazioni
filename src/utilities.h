@@ -33,15 +33,6 @@
 void shmget_error_checking(int id);
 
 /*
- * Semaforo per la lettura. Ha priorità rispetto al semaforo di scrittura: quando il node ha bisogno di scrivere
- * sul libro mastro, deve aspettare che gli altri processi finiscano di eseguire la lettura, in modo da evitare
- * inconsistenze sui dati letti.
- */
-void read_start(int sem_id, unsigned int *readCounter, int read, int write);
-
-void read_end(int sem_id, unsigned int *readCounter, int read, int write);
-
-/*
  * Funzione utile per stampare lo stato di ogni processo. Vengono stampati:
  *      N° di processi utente attivi
  *      N° di processi nodo attivi

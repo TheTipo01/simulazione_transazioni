@@ -28,7 +28,7 @@ union semun {
  * Set a semaphore to a user defined value
  * INPUT:
  * - sem_id: the ID of the semaphore IPC object
- * - sem_num: the usrPosition of the semaphore in the array
+ * - sem_num: the user_position of the semaphore in the array
  * - sem_val: the initialization value of the semaphore
  * RESULT:
  * - the selected semaphore is initialized to the given value
@@ -40,7 +40,7 @@ int sem_set_val(int sem_id, int sem_num, int sem_val);
  * Try to access the resource
  * INPUT:
  * - sem_id: the ID of the semaphore IPC object
- * - sem_num: the usrPosition of the semaphore in the array
+ * - sem_num: the user_position of the semaphore in the array
  * RESULT
  * - if the resource is available (semaphore value > 0), the semaphore
  *   is decremented by one
@@ -54,7 +54,7 @@ int sem_reserve(int sem_id, int sem_num);
  * Release the resource
  * INPUT:
  * - sem_id: the ID of the semaphore IPC object
- * - sem_num: the usrPosition of the semaphore in the array
+ * - sem_num: the user_position of the semaphore in the array
  * RESULT:
  * - the semaphore value is incremented by one. This may unblock some
  *   process
