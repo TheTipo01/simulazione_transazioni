@@ -1,5 +1,6 @@
 #ifndef RWLOCK_H
 #define RWLOCK_H
+
 #include "rwlock.c"
 
 /*
@@ -8,6 +9,7 @@
  * inconsistenze sui dati letti.
  */
 void read_start(int sem_id, unsigned int *readCounter, int read, int write);
+
 void read_end(int sem_id, unsigned int *readCounter, int read, int write);
 
 int get_stop_value(int *stop, unsigned int *readCounter);

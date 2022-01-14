@@ -85,3 +85,11 @@ void detach_and_delete() {
     shmctl(ids.freeBlock, IPC_RMID, NULL);
     shmctl(ids.stopRead, IPC_RMID, NULL);
 }
+
+void delete_message_queue() {
+    int i;
+
+    for (i = 0; i < cfg.SO_NODES_NUM; i++) {
+        msgctl(sh.nodePIDs[i].msgID, IPC_RMID, NULL);
+    }
+}

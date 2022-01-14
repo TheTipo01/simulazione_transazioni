@@ -17,15 +17,15 @@
 int lastBlockCheckedUser = 0, failedTransactionUser = 0;
 unsigned int user_position;
 
-void endUser(int signum){
-    switch(signum){
+void endUser(int signum) {
+    switch (signum) {
         case SIGUSR2:
             if (failedTransactionUser == cfg.SO_RETRY)
                 sh.usersPIDs[user_position].status = PROCESS_FINISHED;
             else
                 sh.usersPIDs[user_position].status = PROCESS_FINISHED_PREMATURELY;
 
-            fprintf(stderr, "User #%d terminated.", getpid());
+            fprintf(stderr, "User #%d terminated.\n", getpid());
             exit(EXIT_SUCCESS);
     }
 }
@@ -108,13 +108,14 @@ void startUser(unsigned int index) {
     /* Copia parametri in variabili globali */
     user_position = index;
 
-    bzero(&sa, sizeof(sa));
+    sigemptyset(&sa.sa_mask);
     sa.sa_handler = endUser;
     sigaction(SIGUSR2, &sa, NULL);
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
     sigaddset(&wset, SIGUSR1);
+    sigaddset(&wset, SIGUSR2);
 
     /*
      * Child aspettano un segnale dal parent: possono iniziare la loro funzione solo dopo che vengono generati
@@ -127,6 +128,7 @@ void startUser(unsigned int index) {
 
     /* Aggiunge l'handler del segnale SIGUSR2, designato per far scatenare la generazione di una transazione */
     signal(SIGUSR2, transactionGenerator);
+    signal(SIGUSR1, NULL);
 
     while (failedTransactionUser < cfg.SO_RETRY && get_stop_value(sh.stop, sh.stopRead) == -1) {
         sh.usersPIDs[user_position].status = PROCESS_RUNNING;
@@ -150,6 +152,7 @@ void startUser(unsigned int index) {
 
             /* Aspettiamo finchè l'utente non riceve una transazione */
             sh.usersPIDs[user_position].status = PROCESS_WAITING;
+            fprintf(stderr, "PID=%d waiting\n", getpid());
             sigwait(&wset, &sig);
         }
 

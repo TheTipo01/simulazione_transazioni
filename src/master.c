@@ -99,9 +99,9 @@ int main(int argc, char *argv[]) {
      */
     if (!fork()) {
         do {
-            printStatus(sh.nodePIDs, sh.usersPIDs);
+            printMoreStatus(sh.nodePIDs, sh.usersPIDs);
             execTime++;
-        } while (execTime < cfg.SO_SIM_SEC - 1 && get_stop_value(sh.stop, sh.stopRead) == -1 && !sleeping(1000000000));
+        } while (execTime < cfg.SO_SIM_SEC && !sleeping(1000000000) && get_stop_value(sh.stop, sh.stopRead) == -1);
 
         if (execTime == cfg.SO_SIM_SEC) {
             sem_reserve(ids.sem, STOP_WRITE);
@@ -110,6 +110,9 @@ int main(int argc, char *argv[]) {
         }
 
         kill(0, SIGUSR2);
+
+        /* Per forzare i nodi a uscire, eliminiamo la loro message queue */
+        delete_message_queue();
 
         exit(EXIT_SUCCESS);
     }
@@ -141,14 +144,14 @@ int main(int argc, char *argv[]) {
     /* Stampa dello stato e del bilancio di ogni processo utente */
     fprintf(stdout, "PROCESSI UTENTE:\n");
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
-        fprintf(stdout, "       #%d, balance = %f\n", sh.usersPIDs[i].pid, sh.usersPIDs[i].balance);
+        fprintf(stdout, "       #%d, balance = %.2f\n", sh.usersPIDs[i].pid, sh.usersPIDs[i].balance);
     }
     fprintf(stdout, "\n");
 
     /* Stampa del bilancio di ogni processo nodo */
     fprintf(stdout, "PROCESSI NODO:\n");
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
-        fprintf(stdout, "       #%d, balance = %f\n", sh.nodePIDs[i].pid, sh.nodePIDs[i].balance);
+        fprintf(stdout, "       #%d, balance = %.2f\n", sh.nodePIDs[i].pid, sh.nodePIDs[i].balance);
     }
     fprintf(stdout, "\n");
 

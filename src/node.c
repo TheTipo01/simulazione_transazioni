@@ -18,16 +18,6 @@
 unsigned int nodePosition;
 struct Transazione *transactionPool;
 
-void endNode(int signum){
-    switch(signum){
-        case SIGUSR2:
-            sh.nodePIDs[nodePosition].status = PROCESS_FINISHED;
-            free(transactionPool);
-            fprintf(stderr, "Node #%d terminated.", getpid());
-            exit(EXIT_SUCCESS);
-    }
-}
-
 struct Transazione generateReward(double tot_reward) {
     struct Transazione reward_tran;
 
@@ -53,9 +43,6 @@ void startNode(unsigned int index) {
     transactionPool = malloc(cfg.SO_TP_SIZE * sizeof(struct Transazione));
     nodePosition = index;
 
-    sa.sa_handler = endNode;
-    sigaction(SIGUSR2, &sa, NULL);
-
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
     sigaddset(&wset, SIGUSR1);
@@ -75,7 +62,14 @@ void startNode(unsigned int index) {
         blockReward = 0;
         do {
             msgrcv(sh.nodePIDs[nodePosition].msgID, &tRcv, msg_size(), 1, 0);
-            TEST_ERROR;
+            if (errno) {
+                if (get_stop_value(sh.stop, sh.stopRead) != -1) {
+                    goto cleanup;
+                } else {
+                    fprintf(stderr, "%s:%d: PID=%5d: Error %d (%s)\n", __FILE__, __LINE__, getpid(), errno,
+                            strerror(errno));
+                }
+            }
 
             transactionPool[last].quantity = tRcv.transazione.quantity * ((100.0 - tRcv.transazione.reward) / 100);
             transactionPool[last].reward = tRcv.transazione.reward;
@@ -127,8 +121,8 @@ void startNode(unsigned int index) {
         }
     }
 
+    cleanup:
     /* Cleanup prima di uscire */
-
     /* Impostazione dello stato del nostro processo */
     sh.nodePIDs[nodePosition].status = PROCESS_FINISHED;
 
