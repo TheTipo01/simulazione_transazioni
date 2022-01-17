@@ -54,7 +54,7 @@ void startNode(unsigned int index) {
     sigwait(&wset, &sig);
 
     /* Mascheriamo i segnali che usiamo */
-    sigprocmask(SIG_BLOCK, &wset, NULL);
+    sigprocmask(SIG_SETMASK, &wset, NULL);
 
     sh.nodePIDs[nodePosition].status = PROCESS_RUNNING;
     while (get_stop_value(sh.stop, sh.stopRead) < 0 && last != cfg.SO_TP_SIZE) {

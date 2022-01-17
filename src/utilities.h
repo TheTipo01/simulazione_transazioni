@@ -39,7 +39,7 @@ void shmget_error_checking(int id);
  *      Processo utente/nodo con bilancio più alto
  *      Processo utente/nodo con bilancio più basso
  */
-void printStatus(struct ProcessoNode *nodePIDs, struct ProcessoUser *usersPIDs);
+void printStatus();
 
 /* Funzione wrapper per nanosleep. */
 int sleeping(long waitingTime);

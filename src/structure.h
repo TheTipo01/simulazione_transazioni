@@ -64,6 +64,8 @@ struct SharedMemoryID {
     int ledger;
     int nodePIDs;
     int usersPIDs;
+    int MMTS;
+    int MMTS_freeBlock;
     int ledgerRead;
     int stop;
     int freeBlock;
@@ -75,10 +77,12 @@ struct SharedMemory {
     struct Blocco *ledger;
     struct ProcessoNode *nodePIDs;
     struct ProcessoUser *usersPIDs;
+    struct Transazione *MMTS;
     unsigned int *ledgerRead;
     unsigned int *stopRead;
     int *stop;
     int *freeBlock;
+    int *MMTS_freeBlock;
 };
 
 #endif

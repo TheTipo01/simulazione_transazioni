@@ -33,6 +33,14 @@ void get_shared_ids() {
     ids.stopRead = shmget(IPC_PRIVATE, sizeof(unsigned int), GET_FLAGS);
     shmget_error_checking(ids.stopRead);
 
+    /* Allocazione del segmento dedicato alle transazioni effettuate via CLI */
+    ids.MMTS = shmget(IPC_PRIVATE, 10 * sizeof(struct Transazione), GET_FLAGS);
+    shmget_error_checking(ids.MMTS);
+
+    /* Allocazione del puntatore al primo spazio libero nell'array delle transazioni man-made */
+    ids.MMTS_freeBlock = shmget(IPC_PRIVATE, sizeof(int), GET_FLAGS);
+    shmget_error_checking(ids.MMTS_freeBlock);
+
     /* Inizializziamo i semafori che usiamo */
     ids.sem = semget(IPC_PRIVATE, NUM_SEMAFORI, GET_FLAGS);
     TEST_ERROR;
@@ -66,6 +74,11 @@ void attach_shared_memory() {
     sh.stopRead = shmat(ids.stopRead, NULL, 0);
     TEST_ERROR;
 
+    sh.MMTS = shmat(ids.MMTS, NULL, 0);
+    TEST_ERROR;
+
+    sh.MMTS_freeBlock = shmat(ids.MMTS_freeBlock, NULL, 0);
+    TEST_ERROR;
 }
 
 void detach_and_delete() {

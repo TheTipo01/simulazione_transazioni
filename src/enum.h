@@ -5,6 +5,7 @@ enum semafori {
     LEDGER_WRITE,
     STOP_READ,
     STOP_WRITE,
+    MMTS,
     FINE_SEMAFORI
 };
 

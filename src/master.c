@@ -98,6 +98,7 @@ int main(int argc, char *argv[]) {
      * Se finisce il tempo/tutti i processi utente finiscono/il libro mastro è pieno, terminare la simulazione.
      */
     if (!fork()) {
+        sigprocmask(SIG_BLOCK, &wset, NULL);
         do {
             printMoreStatus(sh.nodePIDs, sh.usersPIDs);
             execTime++;
@@ -109,7 +110,7 @@ int main(int argc, char *argv[]) {
             sem_release(ids.sem, STOP_WRITE);
         }
 
-        kill(0, SIGUSR2);
+        kill(0, SIGUSR1);
 
         /* Per forzare i nodi a uscire, eliminiamo la loro message queue */
         delete_message_queue();
@@ -169,6 +170,15 @@ int main(int argc, char *argv[]) {
     fprintf(stdout, "Numero di transazioni presenti nella TP di ogni processo nodo:\n");
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         fprintf(stdout, "       #%d, transactions = %d\n", sh.nodePIDs[i].pid, sh.nodePIDs[i].transactions);
+    }
+
+    /* Se sono state fatte transazioni tramite CLI, vengono riportate qui. */
+    if (sh.MMTS[0].timestamp != 0) {
+        fprintf(stdout, "\nMan-Made Transactions:\n");
+        for (i = 0; i < 10 && sh.MMTS[i].timestamp != 0; i++) {
+            fprintf(stdout, "       #%d -> #%d, %.2f$, date: %s\n\n",
+                    sh.MMTS[i].sender, sh.MMTS[i].receiver, sh.MMTS[i].quantity, formatTime(sh.MMTS[i].timestamp));
+        }
     }
 
     /* Cleanup finale */

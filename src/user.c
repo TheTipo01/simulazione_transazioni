@@ -17,19 +17,6 @@
 int lastBlockCheckedUser = 0, failedTransactionUser = 0;
 unsigned int user_position;
 
-void endUser(int signum) {
-    switch (signum) {
-        case SIGUSR2:
-            if (failedTransactionUser == cfg.SO_RETRY)
-                sh.usersPIDs[user_position].status = PROCESS_FINISHED;
-            else
-                sh.usersPIDs[user_position].status = PROCESS_FINISHED_PREMATURELY;
-
-            fprintf(stderr, "User #%d terminated.\n", getpid());
-            exit(EXIT_SUCCESS);
-    }
-}
-
 double calcEntrate(int semID, struct Blocco *lm, unsigned int *readCounter) {
     int pid = getpid(), j;
     double tmpBalance = 0;
@@ -58,7 +45,7 @@ double calcEntrate(int semID, struct Blocco *lm, unsigned int *readCounter) {
     return tmpBalance;
 }
 
-void transactionGenerator(int signal) {
+void transactionGenerator(int sig) {
     struct Messaggio msg;
     int feedback;
 
@@ -85,6 +72,7 @@ void transactionGenerator(int signal) {
     /* Invio al nodo la transazione */
     feedback = msgsnd(sh.nodePIDs[targetNode].msgID, &msg, msg_size(), 0);
 
+    sem_reserve(ids.sem, (int) (FINE_SEMAFORI + user_position));
     if (feedback == -1) {
         /* Se la transazione fallisce, aumentiamo il contatore delle transazioni
          * fallite di 1 */
@@ -94,12 +82,20 @@ void transactionGenerator(int signal) {
          * l'uscita appena effettuata */
         sh.usersPIDs[user_position].balance -=
                 (unsigned int) (msg.transazione.quantity * ((float) (100 - msg.transazione.reward) / 100.0));
+
+        /* Se il segnale ricevuto è SIGUSR2, significa che questa funzione è stata chiamata inviando un segnale ad un processo utente */
+        if (sig == SIGUSR2) {
+            sem_reserve(ids.sem, MMTS);
+            sh.MMTS[*sh.MMTS_freeBlock] = msg.transazione;
+            *sh.MMTS_freeBlock += 1;
+            sem_release(ids.sem, MMTS);
+        }
     }
+    sem_release(ids.sem, (int) (FINE_SEMAFORI + user_position));
 }
 
 void startUser(unsigned int index) {
     int sig, j, k = 0, cont = 0;
-    struct sigaction sa;
     sigset_t wset;
 
     /* Seeding di rand con il pid del processo */
@@ -108,14 +104,9 @@ void startUser(unsigned int index) {
     /* Copia parametri in variabili globali */
     user_position = index;
 
-    sigemptyset(&sa.sa_mask);
-    sa.sa_handler = endUser;
-    sigaction(SIGUSR2, &sa, NULL);
-
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
     sigaddset(&wset, SIGUSR1);
-    sigaddset(&wset, SIGUSR2);
 
     /*
      * Child aspettano un segnale dal parent: possono iniziare la loro funzione solo dopo che vengono generati
@@ -124,21 +115,21 @@ void startUser(unsigned int index) {
     sigwait(&wset, &sig);
 
     /* Mascheriamo i segnali che usiamo */
-    sigprocmask(SIG_BLOCK, &wset, NULL);
+    sigprocmask(SIG_SETMASK, &wset, NULL);
 
     /* Aggiunge l'handler del segnale SIGUSR2, designato per far scatenare la generazione di una transazione */
     signal(SIGUSR2, transactionGenerator);
-    signal(SIGUSR1, NULL);
 
     while (failedTransactionUser < cfg.SO_RETRY && get_stop_value(sh.stop, sh.stopRead) == -1) {
         sh.usersPIDs[user_position].status = PROCESS_RUNNING;
         sem_reserve(ids.sem, (int) (FINE_SEMAFORI + user_position));
-        TEST_ERROR;
 
         /* Calcolo del bilancio dell'utente: calcoliamo solo le entrate, in quanto
          * le uscite vengono registrate dopo */
         sh.usersPIDs[user_position].balance +=
                 calcEntrate(ids.sem, sh.ledger, sh.ledgerRead);
+
+        sem_release(ids.sem, (int) (FINE_SEMAFORI + user_position));
 
         if (sh.usersPIDs[user_position].balance >= 2) {
             transactionGenerator(0);
@@ -152,15 +143,13 @@ void startUser(unsigned int index) {
 
             /* Aspettiamo finchè l'utente non riceve una transazione */
             sh.usersPIDs[user_position].status = PROCESS_WAITING;
-            fprintf(stderr, "PID=%d waiting\n", getpid());
             sigwait(&wset, &sig);
         }
-
-        sem_release(ids.sem, (int) (FINE_SEMAFORI + user_position));
     }
 
     /* Cleanup prima di uscire */
 
+    /* Set dello status basandoci sulla quantità di transazioni fallite */
     if (failedTransactionUser != cfg.SO_RETRY)
         sh.usersPIDs[user_position].status = PROCESS_FINISHED;
     else
