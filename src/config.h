@@ -44,7 +44,7 @@ typedef struct Config {
     int SO_HOPS;
 } Config;
 
-Config newConfig();
+Config new_config();
 
 /* Funzione utile per error-checking nella fase di inizializzazione delle variabili d'ambiente */
 char *get_env(const char *name);

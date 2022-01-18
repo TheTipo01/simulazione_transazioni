@@ -2,4 +2,4 @@
 
 ## libsem
 
-Libreria yoinkata dai file forniti a lezione
+Libreria presa dai file forniti a lezione

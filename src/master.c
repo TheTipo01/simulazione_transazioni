@@ -33,15 +33,15 @@ struct SharedMemory sh;
 struct SharedMemoryID ids;
 
 int main(int argc, char *argv[]) {
-    unsigned int execTime = 0;
-    int i, cont, currentPid, status;
+    unsigned int exec_time = 0;
+    int i, cont, current_pid, status;
     sigset_t wset;
 
     /* Disattiviamo il buffering di stdout per stampare subito lo stato della simulazione */
     setvbuf(stdout, NULL, _IONBF, 0);
 
     /* Lettura del file di configurazione a partire dalle variabili d'ambiente */
-    cfg = newConfig();
+    cfg = new_config();
 
     /* Ottenimento degli id per la shared memory */
     get_shared_ids();
@@ -62,19 +62,19 @@ int main(int argc, char *argv[]) {
     sigaddset(&wset, SIGUSR2);
 
     /* Mascheriamo i segnali che usiamo */
-    sigprocmask(SIG_BLOCK, &wset, NULL);
+    sigprocmask(SIG_SETMASK, &wset, NULL);
 
     /* Avviamo i processi node */
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
-        switch (currentPid = fork()) {
+        switch (current_pid = fork()) {
             case -1:
                 fprintf(stderr, "Error forking\n");
                 exit(EXIT_FAILURE);
             case 0:
-                startNode(i);
+                start_node(i);
                 exit(EXIT_SUCCESS);
             default:
-                sh.nodes_pid[i].pid = currentPid;
+                sh.nodes_pid[i].pid = current_pid;
                 sh.nodes_pid[i].balance = 0;
                 sh.nodes_pid[i].status = PROCESS_WAITING;
                 sh.nodes_pid[i].transactions = 0;
@@ -84,15 +84,15 @@ int main(int argc, char *argv[]) {
 
     /* Avviamo i processi user */
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
-        switch (currentPid = fork()) {
+        switch (current_pid = fork()) {
             case -1:
                 fprintf(stderr, "Error forking\n");
                 exit(EXIT_FAILURE);
             case 0:
-                startUser(i);
+                start_user(i);
                 exit(EXIT_SUCCESS);
             default:
-                sh.users_pid[i].pid = currentPid;
+                sh.users_pid[i].pid = current_pid;
                 sh.users_pid[i].balance = cfg.SO_BUDGET_INIT;
                 sh.users_pid[i].status = PROCESS_WAITING;
         }
@@ -107,13 +107,15 @@ int main(int argc, char *argv[]) {
      * Se finisce il tempo/tutti i processi utente finiscono/il libro mastro è pieno, terminare la simulazione.
      */
     if (!fork()) {
-        sigprocmask(SIG_BLOCK, &wset, NULL);
+        /* Blocchiamo anche nel fork i segnali usati dai processi user/node */
+        sigprocmask(SIG_SETMASK, &wset, NULL);
+
         do {
             print_more_status(sh.nodes_pid, sh.users_pid);
-            execTime++;
-        } while (execTime < cfg.SO_SIM_SEC && !sleeping(1000000000) && get_stop_value(sh.stop, sh.stop_read) == -1);
+            exec_time++;
+        } while (exec_time < cfg.SO_SIM_SEC && !sleeping(1000000000) && get_stop_value(sh.stop, sh.stop_read) == -1);
 
-        if (execTime == cfg.SO_SIM_SEC) {
+        if (exec_time == cfg.SO_SIM_SEC) {
             sem_reserve(ids.sem, STOP_WRITE);
             *sh.stop = TIMEDOUT;
             sem_release(ids.sem, STOP_WRITE);

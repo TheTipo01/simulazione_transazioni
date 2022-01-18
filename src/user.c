@@ -14,45 +14,45 @@
 #include <stdlib.h>
 #include <time.h>
 
-int lastBlockCheckedUser = 0, failedTransactionUser = 0;
+int last_block_checked_user = 0, failed_transaction_user = 0;
 unsigned int user_position;
 
-double calcEntrate(int semID, struct Blocco *lm, unsigned int *readCounter) {
+double calc_entrate(int sem_id, struct Blocco *lm, unsigned int *read_counter) {
     int pid = getpid(), j;
-    double tmpBalance = 0;
+    double tmp_balance = 0;
 
     /* Dobbiamo eseguire una lettura del libro mastro, quindi impostiamo il
      * semaforo di lettura */
-    read_start(semID, readCounter, LEDGER_READ, LEDGER_WRITE);
+    read_start(sem_id, read_counter, LEDGER_READ, LEDGER_WRITE);
 
     /* Cicliamo all'interno del libro mastro per controllare ogni transazione
      * eseguita */
-    for (; lastBlockCheckedUser < SO_REGISTRY_SIZE &&
-           lastBlockCheckedUser < *sh.ledger_free_block; lastBlockCheckedUser++) {
+    for (; last_block_checked_user < SO_REGISTRY_SIZE &&
+           last_block_checked_user < *sh.ledger_free_block; last_block_checked_user++) {
         /* Se in posizione i c'è un blocco, controlliamo il contenuto */
         for (j = 0; j < SO_BLOCK_SIZE; j++) {
             /* Se nella transazione il ricevente è l'utente stesso, allora
              * aggiungiamo al bilancio la quantità della transazione */
-            if (lm[lastBlockCheckedUser].transazioni[j].receiver == pid) {
-                tmpBalance += lm[lastBlockCheckedUser].transazioni[j].quantity;
+            if (lm[last_block_checked_user].transazioni[j].receiver == pid) {
+                tmp_balance += lm[last_block_checked_user].transazioni[j].quantity;
             }
         }
     }
 
     /* Rilasciamo il semaforo di lettura a fine operazione */
-    read_end(semID, readCounter, LEDGER_READ, LEDGER_WRITE);
+    read_end(sem_id, read_counter, LEDGER_READ, LEDGER_WRITE);
 
-    return tmpBalance;
+    return tmp_balance;
 }
 
-void transactionGenerator(int sig) {
+void transaction_generator(int sig) {
     struct Messaggio msg;
     int feedback;
 
     /* Puntatore al mittente e destinatario scelto casualmente (il PID verrà preso dalla lista di nodi/utenti a cui
      * si accede col puntatore ottenuto) */
     long receiver = random() % cfg.SO_USERS_NUM;
-    long targetNode = random() % cfg.SO_NODES_NUM;
+    long target_node = random() % cfg.SO_NODES_NUM;
 
     /* Generazione della transazione */
     msg.transazione.sender = getpid();
@@ -73,13 +73,13 @@ void transactionGenerator(int sig) {
     msg.m_type = 1;
 
     /* Invio al nodo la transazione */
-    feedback = msgsnd(sh.nodes_pid[targetNode].msg_id, &msg, msg_size(), 0);
+    feedback = msgsnd(sh.nodes_pid[target_node].msg_id, &msg, msg_size(), 0);
 
     sem_reserve(ids.sem, (int) (FINE_SEMAFORI + user_position));
     if (feedback == -1) {
         /* Se la transazione fallisce, aumentiamo il contatore delle transazioni
          * fallite di 1 */
-        failedTransactionUser++;
+        failed_transaction_user++;
     } else {
         /* Se la transazione ha avuto successo, aggiorniamo il bilancio con
          * l'uscita appena effettuata */
@@ -97,7 +97,7 @@ void transactionGenerator(int sig) {
     sem_release(ids.sem, (int) (FINE_SEMAFORI + user_position));
 }
 
-void startUser(unsigned int index) {
+void start_user(unsigned int index) {
     int sig, j, k = 0;
     sigset_t wset;
 
@@ -121,24 +121,24 @@ void startUser(unsigned int index) {
     sigprocmask(SIG_SETMASK, &wset, NULL);
 
     /* Aggiunge l'handler del segnale SIGUSR2, designato per far scatenare la generazione di una transazione */
-    signal(SIGUSR2, transactionGenerator);
+    signal(SIGUSR2, transaction_generator);
 
     /* Ciclo principale di generazione delle transazioni */
-    while (failedTransactionUser < cfg.SO_RETRY && get_stop_value(sh.stop, sh.stop_read) == -1) {
+    while (failed_transaction_user < cfg.SO_RETRY && get_stop_value(sh.stop, sh.stop_read) == -1) {
         sh.users_pid[user_position].status = PROCESS_RUNNING;
         sem_reserve(ids.sem, (int) (FINE_SEMAFORI + user_position));
 
         /* Calcolo del bilancio dell'utente: calcoliamo solo le entrate, in quanto
          * le uscite vengono registrate dopo */
         sh.users_pid[user_position].balance +=
-                calcEntrate(ids.sem, sh.ledger, sh.ledger_read);
+                calc_entrate(ids.sem, sh.ledger, sh.ledger_read);
 
         sem_release(ids.sem, (int) (FINE_SEMAFORI + user_position));
 
         /* Se l'utente ha un bilancio abbastanza alto... */
         if (sh.users_pid[user_position].balance >= 2) {
             /* ...viene generata la transazione. */
-            transactionGenerator(0);
+            transaction_generator(0);
 
             sleeping(random() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
                      cfg.SO_MIN_TRANS_GEN_NSEC);
@@ -155,7 +155,7 @@ void startUser(unsigned int index) {
     /* Cleanup prima di uscire */
 
     /* Set dello status basandoci sulla quantità di transazioni fallite */
-    if (failedTransactionUser != cfg.SO_RETRY)
+    if (failed_transaction_user != cfg.SO_RETRY)
         sh.users_pid[user_position].status = PROCESS_FINISHED;
     else
         sh.users_pid[user_position].status = PROCESS_FINISHED_PREMATURELY;

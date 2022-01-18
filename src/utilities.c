@@ -33,181 +33,181 @@ char *get_status(int status) {
     }
 }
 
-void printStatus() {
-    int i, activeNodes = 0, activeUsers = 0;
-    pid_t maxPid, minPid;
-    double maxBal, minBal;
-    char *maxStat, *minStat;
+void print_status() {
+    int i, active_nodes = 0, active_users = 0;
+    pid_t max_pid, min_pid;
+    double max_bal, min_bal;
+    char *max_stat, *min_stat;
 
     setvbuf(stdout, NULL, _IONBF, 0);
 
     clrscr();
 
-    maxBal = 0;
-    minBal = cfg.SO_BUDGET_INIT;
+    max_bal = 0;
+    min_bal = cfg.SO_BUDGET_INIT;
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
         if (sh.users_pid[i].status != PROCESS_FINISHED) {
-            activeUsers++;
-            if (sh.users_pid[i].balance > maxBal) {
-                maxBal = sh.users_pid[i].balance;
-                maxPid = sh.users_pid[i].pid;
-                maxStat = get_status(sh.users_pid[i].status);
+            active_users++;
+            if (sh.users_pid[i].balance > max_bal) {
+                max_bal = sh.users_pid[i].balance;
+                max_pid = sh.users_pid[i].pid;
+                max_stat = get_status(sh.users_pid[i].status);
             }
-            if (sh.users_pid[i].balance < minBal) {
-                minBal = sh.users_pid[i].balance;
-                minPid = sh.users_pid[i].pid;
-                minStat = get_status(sh.users_pid[i].status);
+            if (sh.users_pid[i].balance < min_bal) {
+                min_bal = sh.users_pid[i].balance;
+                min_pid = sh.users_pid[i].pid;
+                min_stat = get_status(sh.users_pid[i].status);
             }
         }
     }
-    fprintf(stdout, "\nNumero di processi utente attivi: %d\n", activeUsers);
-    fprintf(stdout, "Processo utente con bilancio più alto: #%d, status = %s, balance = %.2f\n", maxPid, maxStat,
-            maxBal);
-    fprintf(stdout, "Processo utente con bilancio più basso: #%d, status = %s, balance = %.2f\n", minPid, minStat,
-            minBal);
+    fprintf(stdout, "\nNumero di processi utente attivi: %d\n", active_users);
+    fprintf(stdout, "Processo utente con bilancio più alto: #%d, status = %s, balance = %.2f\n", max_pid, max_stat,
+            max_bal);
+    fprintf(stdout, "Processo utente con bilancio più basso: #%d, status = %s, balance = %.2f\n", min_pid, min_stat,
+            min_bal);
 
-    maxBal = 0;
-    minBal = cfg.SO_BUDGET_INIT;
+    max_bal = 0;
+    min_bal = cfg.SO_BUDGET_INIT;
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         if (sh.nodes_pid[i].status != PROCESS_FINISHED) {
-            activeNodes++;
-            if (sh.nodes_pid[i].balance > maxBal) {
-                maxBal = sh.nodes_pid[i].balance;
-                maxPid = sh.nodes_pid[i].pid;
-                maxStat = get_status(sh.nodes_pid[i].status);
+            active_nodes++;
+            if (sh.nodes_pid[i].balance > max_bal) {
+                max_bal = sh.nodes_pid[i].balance;
+                max_pid = sh.nodes_pid[i].pid;
+                max_stat = get_status(sh.nodes_pid[i].status);
             }
-            if (sh.nodes_pid[i].balance < minBal) {
-                minBal = sh.nodes_pid[i].balance;
-                minPid = sh.nodes_pid[i].pid;
-                minStat = get_status(sh.nodes_pid[i].status);
+            if (sh.nodes_pid[i].balance < min_bal) {
+                min_bal = sh.nodes_pid[i].balance;
+                min_pid = sh.nodes_pid[i].pid;
+                min_stat = get_status(sh.nodes_pid[i].status);
             }
         }
     }
-    fprintf(stdout, "Numero di processi nodo attivi: %d\n", activeNodes);
-    fprintf(stdout, "Processo nodo con bilancio più alto: #%d, status = %s, balance = %.2f\n", maxPid, maxStat, maxBal);
-    fprintf(stdout, "Processo nodo con bilancio più basso: #%d, status = %s, balance = %.2f\n\n", minPid, minStat,
-            minBal);
+    fprintf(stdout, "Numero di processi nodo attivi: %d\n", active_nodes);
+    fprintf(stdout, "Processo nodo con bilancio più alto: #%d, status = %s, balance = %.2f\n", max_pid, max_stat, max_bal);
+    fprintf(stdout, "Processo nodo con bilancio più basso: #%d, status = %s, balance = %.2f\n\n", min_pid, min_stat,
+            min_bal);
 }
 
 void print_more_status() {
-    int i, activeNodes = 0, activeUsers = 0;
-    struct ProcessoNode Top3Nodes[3], Bottom3Nodes[3], tempNode;
-    struct ProcessoUser Top3Users[3], Bottom3Users[3], tempUser;
+    int i, active_nodes = 0, active_users = 0;
+    struct ProcessoNode t3_nodes[3], b3_nodes[3], temp_node;
+    struct ProcessoUser t3_users[3], b3_users[3], temp_user;
 
     clrscr();
 
     setvbuf(stdout, NULL, _IONBF, 0);
 
     for (i = 0; i < 3; i++) {
-        Top3Users[i].balance = 0;
-        Top3Users[i].status = 0;
-        Top3Users[i].pid = 0;
+        t3_users[i].balance = 0;
+        t3_users[i].status = 0;
+        t3_users[i].pid = 0;
 
-        Top3Nodes[i].balance = 0;
-        Top3Nodes[i].status = 0;
-        Top3Nodes[i].pid = 0;
+        t3_nodes[i].balance = 0;
+        t3_nodes[i].status = 0;
+        t3_nodes[i].pid = 0;
 
-        Bottom3Users[i].balance = cfg.SO_BUDGET_INIT + 1;
-        Bottom3Users[i].status = 0;
-        Bottom3Users[i].pid = 0;
+        b3_users[i].balance = cfg.SO_BUDGET_INIT + 1;
+        b3_users[i].status = 0;
+        b3_users[i].pid = 0;
 
-        Bottom3Nodes[i].balance = cfg.SO_BUDGET_INIT + 1;
-        Bottom3Nodes[i].status = 0;
-        Bottom3Nodes[i].pid = 0;
+        b3_nodes[i].balance = cfg.SO_BUDGET_INIT + 1;
+        b3_nodes[i].status = 0;
+        b3_nodes[i].pid = 0;
     }
 
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
         if (sh.users_pid[i].status != PROCESS_FINISHED && sh.users_pid[i].status != PROCESS_FINISHED_PREMATURELY) {
-            activeUsers++;
+            active_users++;
         }
     }
 
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         if (sh.nodes_pid[i].status != PROCESS_FINISHED) {
-            activeNodes++;
+            active_nodes++;
         }
     }
 
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
-        if (sh.users_pid[i].balance > Top3Users[0].balance) {
-            tempUser = Top3Users[1];
-            Top3Users[1] = Top3Users[0];
-            Top3Users[2] = tempUser;
-            Top3Users[0] = sh.users_pid[i];
-        } else if (sh.users_pid[i].balance > Top3Users[1].balance) {
-            tempUser = Top3Users[1];
-            Top3Users[1] = sh.users_pid[i];
-            Top3Users[2] = tempUser;
-        } else if (sh.users_pid[i].balance > Top3Users[2].balance) {
-            Top3Users[2] = sh.users_pid[i];
+        if (sh.users_pid[i].balance > t3_users[0].balance) {
+            temp_user = t3_users[1];
+            t3_users[1] = t3_users[0];
+            t3_users[2] = temp_user;
+            t3_users[0] = sh.users_pid[i];
+        } else if (sh.users_pid[i].balance > t3_users[1].balance) {
+            temp_user = t3_users[1];
+            t3_users[1] = sh.users_pid[i];
+            t3_users[2] = temp_user;
+        } else if (sh.users_pid[i].balance > t3_users[2].balance) {
+            t3_users[2] = sh.users_pid[i];
         }
 
-        if (sh.users_pid[i].balance < Bottom3Users[0].balance) {
-            tempUser = Bottom3Users[1];
-            Bottom3Users[1] = Bottom3Users[0];
-            Bottom3Users[2] = tempUser;
-            Bottom3Users[0] = sh.users_pid[i];
-        } else if (sh.users_pid[i].balance < Bottom3Users[1].balance) {
-            tempUser = Bottom3Users[1];
-            Bottom3Users[1] = sh.users_pid[i];
-            Bottom3Users[2] = tempUser;
-        } else if (sh.users_pid[i].balance < Bottom3Users[2].balance) {
-            Bottom3Users[2] = sh.users_pid[i];
+        if (sh.users_pid[i].balance < b3_users[0].balance) {
+            temp_user = b3_users[1];
+            b3_users[1] = b3_users[0];
+            b3_users[2] = temp_user;
+            b3_users[0] = sh.users_pid[i];
+        } else if (sh.users_pid[i].balance < b3_users[1].balance) {
+            temp_user = b3_users[1];
+            b3_users[1] = sh.users_pid[i];
+            b3_users[2] = temp_user;
+        } else if (sh.users_pid[i].balance < b3_users[2].balance) {
+            b3_users[2] = sh.users_pid[i];
         }
     }
 
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
-        if (sh.nodes_pid[i].balance > Top3Nodes[0].balance) {
-            tempNode = Top3Nodes[1];
-            Top3Nodes[1] = Top3Nodes[0];
-            Top3Nodes[2] = tempNode;
-            Top3Nodes[0] = sh.nodes_pid[i];
-        } else if (sh.nodes_pid[i].balance > Top3Nodes[1].balance) {
-            tempNode = Top3Nodes[1];
-            Top3Nodes[1] = sh.nodes_pid[i];
-            Top3Nodes[2] = tempNode;
-        } else if (sh.nodes_pid[i].balance > Top3Nodes[2].balance) {
-            Top3Nodes[2] = sh.nodes_pid[i];
+        if (sh.nodes_pid[i].balance > t3_nodes[0].balance) {
+            temp_node = t3_nodes[1];
+            t3_nodes[1] = t3_nodes[0];
+            t3_nodes[2] = temp_node;
+            t3_nodes[0] = sh.nodes_pid[i];
+        } else if (sh.nodes_pid[i].balance > t3_nodes[1].balance) {
+            temp_node = t3_nodes[1];
+            t3_nodes[1] = sh.nodes_pid[i];
+            t3_nodes[2] = temp_node;
+        } else if (sh.nodes_pid[i].balance > t3_nodes[2].balance) {
+            t3_nodes[2] = sh.nodes_pid[i];
         }
 
-        if (sh.nodes_pid[i].balance < Bottom3Nodes[0].balance) {
-            tempNode = Bottom3Nodes[1];
-            Bottom3Nodes[1] = Bottom3Nodes[0];
-            Bottom3Nodes[2] = tempNode;
-            Bottom3Nodes[0] = sh.nodes_pid[i];
-        } else if (sh.nodes_pid[i].balance < Bottom3Nodes[1].balance) {
-            tempNode = Bottom3Nodes[1];
-            Bottom3Nodes[1] = sh.nodes_pid[i];
-            Bottom3Nodes[2] = tempNode;
-        } else if (sh.nodes_pid[i].balance < Bottom3Nodes[2].balance) {
-            Bottom3Nodes[2] = sh.nodes_pid[i];
+        if (sh.nodes_pid[i].balance < b3_nodes[0].balance) {
+            temp_node = b3_nodes[1];
+            b3_nodes[1] = b3_nodes[0];
+            b3_nodes[2] = temp_node;
+            b3_nodes[0] = sh.nodes_pid[i];
+        } else if (sh.nodes_pid[i].balance < b3_nodes[1].balance) {
+            temp_node = b3_nodes[1];
+            b3_nodes[1] = sh.nodes_pid[i];
+            b3_nodes[2] = temp_node;
+        } else if (sh.nodes_pid[i].balance < b3_nodes[2].balance) {
+            b3_nodes[2] = sh.nodes_pid[i];
         }
     }
 
 #define format "#%-5d %-6.2f %s       #%-5d %-6.2f %s\n"
 
     fprintf(stdout, "------------------------------------------------------------\n");
-    fprintf(stdout, "Active Users: %d                Active Nodes: %d\n", activeUsers, activeNodes);
+    fprintf(stdout, "Active Users: %d                Active Nodes: %d\n", active_users, active_nodes);
     fprintf(stdout, "\nTop/Bottom 3 Users:           Top/Bottom 3 Nodes:\n");
     fprintf(stdout, format,
-            Top3Users[0].pid, Top3Users[0].balance, get_status(Top3Users[0].status),
-            Top3Nodes[0].pid, Top3Nodes[0].balance, get_status(Top3Nodes[0].status));
+            t3_users[0].pid, t3_users[0].balance, get_status(t3_users[0].status),
+            t3_nodes[0].pid, t3_nodes[0].balance, get_status(t3_nodes[0].status));
     fprintf(stdout, format,
-            Top3Users[1].pid, Top3Users[1].balance, get_status(Top3Users[1].status),
-            Top3Nodes[1].pid, Top3Nodes[1].balance, get_status(Top3Nodes[1].status));
+            t3_users[1].pid, t3_users[1].balance, get_status(t3_users[1].status),
+            t3_nodes[1].pid, t3_nodes[1].balance, get_status(t3_nodes[1].status));
     fprintf(stdout, format,
-            Top3Users[2].pid, Top3Users[2].balance, get_status(Top3Users[2].status),
-            Top3Nodes[2].pid, Top3Nodes[2].balance, get_status(Top3Nodes[2].status));
+            t3_users[2].pid, t3_users[2].balance, get_status(t3_users[2].status),
+            t3_nodes[2].pid, t3_nodes[2].balance, get_status(t3_nodes[2].status));
     fprintf(stdout, "...                                 ...\n");
     fprintf(stdout, format,
-            Bottom3Users[2].pid, Bottom3Users[2].balance, get_status(Bottom3Users[2].status),
-            Bottom3Nodes[2].pid, Bottom3Nodes[2].balance, get_status(Bottom3Nodes[2].status));
+            b3_users[2].pid, b3_users[2].balance, get_status(b3_users[2].status),
+            b3_nodes[2].pid, b3_nodes[2].balance, get_status(b3_nodes[2].status));
     fprintf(stdout, format,
-            Bottom3Users[1].pid, Bottom3Users[1].balance, get_status(Bottom3Users[1].status),
-            Bottom3Nodes[1].pid, Bottom3Nodes[1].balance, get_status(Bottom3Nodes[1].status));
+            b3_users[1].pid, b3_users[1].balance, get_status(b3_users[1].status),
+            b3_nodes[1].pid, b3_nodes[1].balance, get_status(b3_nodes[1].status));
     fprintf(stdout, format,
-            Bottom3Users[0].pid, Bottom3Users[0].balance, get_status(Bottom3Users[0].status),
-            Bottom3Nodes[0].pid, Bottom3Nodes[0].balance, get_status(Bottom3Nodes[0].status));
+            b3_users[0].pid, b3_users[0].balance, get_status(b3_users[0].status),
+            b3_nodes[0].pid, b3_nodes[0].balance, get_status(b3_nodes[0].status));
     fprintf(stdout, "------------------------------------------------------------\n\n");
 }
 
@@ -219,10 +219,10 @@ void shmget_error_checking(int id) {
     }
 }
 
-int sleeping(long waitingTime) {
+int sleeping(long waiting_time) {
     struct timespec requested_time;
-    requested_time.tv_sec = waitingTime / 1000000000;
-    requested_time.tv_nsec = waitingTime % 1000000000;
+    requested_time.tv_sec = waiting_time / 1000000000;
+    requested_time.tv_nsec = waiting_time % 1000000000;
     return nanosleep(&requested_time, NULL);
 }
 

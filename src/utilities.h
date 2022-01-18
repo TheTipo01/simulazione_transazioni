@@ -47,7 +47,7 @@ void shmget_error_checking(int id);
  *      Processo utente/nodo con bilancio più alto
  *      Processo utente/nodo con bilancio più basso
  */
-void printStatus();
+void print_status();
 
 /*
  * Funzione alternativa più completa per visualizzare lo stato dei processi. Vengono stampati:
@@ -60,13 +60,13 @@ void printStatus();
 void print_more_status();
 
 /* Funzione wrapper per nanosleep. */
-int sleeping(long waitingTime);
+int sleeping(long waiting_time);
 
 /* Funzione che dato un tempo time_t restituisce una stringa formattata a partire dal timestamp. */
 char *format_time(time_t rawtime);
 
 /* Funzione utile ad ottenere una stringa appropriata per lo stato del processo osservato. Utilizzata principalmente
- * per la visualizzazione, nella funzione printStatus e print_more_status. */
+ * per la visualizzazione, nella funzione print_status e print_more_status. */
 char *get_status(int status);
 
 #endif
