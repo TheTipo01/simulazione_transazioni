@@ -28,7 +28,7 @@ double calcEntrate(int semID, struct Blocco *lm, unsigned int *readCounter) {
     /* Cicliamo all'interno del libro mastro per controllare ogni transazione
      * eseguita */
     for (; lastBlockCheckedUser < SO_REGISTRY_SIZE &&
-           lastBlockCheckedUser < *sh.freeBlock; lastBlockCheckedUser++) {
+           lastBlockCheckedUser < *sh.ledger_free_block; lastBlockCheckedUser++) {
         /* Se in posizione i c'è un blocco, controlliamo il contenuto */
         for (j = 0; j < SO_BLOCK_SIZE; j++) {
             /* Se nella transazione il ricevente è l'utente stesso, allora
@@ -49,11 +49,14 @@ void transactionGenerator(int sig) {
     struct Messaggio msg;
     int feedback;
 
+    /* Puntatore al mittente e destinatario scelto casualmente (il PID verrà preso dalla lista di nodi/utenti a cui
+     * si accede col puntatore ottenuto) */
     long receiver = random() % cfg.SO_USERS_NUM;
     long targetNode = random() % cfg.SO_NODES_NUM;
 
+    /* Generazione della transazione */
     msg.transazione.sender = getpid();
-    msg.transazione.receiver = sh.usersPIDs[receiver].pid;
+    msg.transazione.receiver = sh.users_pid[receiver].pid;
     msg.transazione.timestamp = time(NULL);
     if (cfg.SO_REWARD < 1)
         msg.transazione.reward = 1;
@@ -63,14 +66,14 @@ void transactionGenerator(int sig) {
     msg.transazione.quantity = random() % (cfg.SO_BUDGET_INIT + 1 - 2) + 2;
 
     /* Se abbiamo generato una quantità superiore al bilancio, prendiamo il rimanente del bilancio */
-    if (msg.transazione.quantity > sh.usersPIDs[user_position].balance) {
-        msg.transazione.quantity = sh.usersPIDs[user_position].balance - 2;
+    if (msg.transazione.quantity > sh.users_pid[user_position].balance) {
+        msg.transazione.quantity = sh.users_pid[user_position].balance - 2;
     }
 
     msg.m_type = 1;
 
     /* Invio al nodo la transazione */
-    feedback = msgsnd(sh.nodePIDs[targetNode].msgID, &msg, msg_size(), 0);
+    feedback = msgsnd(sh.nodes_pid[targetNode].msg_id, &msg, msg_size(), 0);
 
     sem_reserve(ids.sem, (int) (FINE_SEMAFORI + user_position));
     if (feedback == -1) {
@@ -80,14 +83,14 @@ void transactionGenerator(int sig) {
     } else {
         /* Se la transazione ha avuto successo, aggiorniamo il bilancio con
          * l'uscita appena effettuata */
-        sh.usersPIDs[user_position].balance -=
+        sh.users_pid[user_position].balance -=
                 (unsigned int) (msg.transazione.quantity * ((float) (100 - msg.transazione.reward) / 100.0));
 
         /* Se il segnale ricevuto è SIGUSR2, significa che questa funzione è stata chiamata inviando un segnale ad un processo utente */
         if (sig == SIGUSR2) {
             sem_reserve(ids.sem, MMTS);
-            sh.MMTS[*sh.MMTS_freeBlock] = msg.transazione;
-            *sh.MMTS_freeBlock += 1;
+            sh.mmts[*sh.mmts_free_block] = msg.transazione;
+            *sh.mmts_free_block += 1;
             sem_release(ids.sem, MMTS);
         }
     }
@@ -95,7 +98,7 @@ void transactionGenerator(int sig) {
 }
 
 void startUser(unsigned int index) {
-    int sig, j, k = 0, cont = 0;
+    int sig, j, k = 0;
     sigset_t wset;
 
     /* Seeding di rand con il pid del processo */
@@ -120,20 +123,22 @@ void startUser(unsigned int index) {
     /* Aggiunge l'handler del segnale SIGUSR2, designato per far scatenare la generazione di una transazione */
     signal(SIGUSR2, transactionGenerator);
 
-    while (failedTransactionUser < cfg.SO_RETRY && get_stop_value(sh.stop, sh.stopRead) == -1) {
-        sh.usersPIDs[user_position].status = PROCESS_RUNNING;
+    /* Ciclo principale di generazione delle transazioni */
+    while (failedTransactionUser < cfg.SO_RETRY && get_stop_value(sh.stop, sh.stop_read) == -1) {
+        sh.users_pid[user_position].status = PROCESS_RUNNING;
         sem_reserve(ids.sem, (int) (FINE_SEMAFORI + user_position));
 
         /* Calcolo del bilancio dell'utente: calcoliamo solo le entrate, in quanto
          * le uscite vengono registrate dopo */
-        sh.usersPIDs[user_position].balance +=
-                calcEntrate(ids.sem, sh.ledger, sh.ledgerRead);
+        sh.users_pid[user_position].balance +=
+                calcEntrate(ids.sem, sh.ledger, sh.ledger_read);
 
         sem_release(ids.sem, (int) (FINE_SEMAFORI + user_position));
 
-        if (sh.usersPIDs[user_position].balance >= 2) {
+        /* Se l'utente ha un bilancio abbastanza alto... */
+        if (sh.users_pid[user_position].balance >= 2) {
+            /* ...viene generata la transazione. */
             transactionGenerator(0);
-            cont++;
 
             sleeping(random() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
                      cfg.SO_MIN_TRANS_GEN_NSEC);
@@ -141,8 +146,8 @@ void startUser(unsigned int index) {
             sleeping(random() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
                      cfg.SO_MIN_TRANS_GEN_NSEC);
 
-            /* Aspettiamo finchè l'utente non riceve una transazione */
-            sh.usersPIDs[user_position].status = PROCESS_WAITING;
+            /* Se non c'è abbastanza bilancio, aspettiamo finchè l'utente non riceve una transazione */
+            sh.users_pid[user_position].status = PROCESS_WAITING;
             sigwait(&wset, &sig);
         }
     }
@@ -151,17 +156,17 @@ void startUser(unsigned int index) {
 
     /* Set dello status basandoci sulla quantità di transazioni fallite */
     if (failedTransactionUser != cfg.SO_RETRY)
-        sh.usersPIDs[user_position].status = PROCESS_FINISHED;
+        sh.users_pid[user_position].status = PROCESS_FINISHED;
     else
-        sh.usersPIDs[user_position].status = PROCESS_FINISHED_PREMATURELY;
+        sh.users_pid[user_position].status = PROCESS_FINISHED_PREMATURELY;
 
     /* Se non c'è stato un ordine di uscire, controlliamo se gli altri processi
      * abbiano finito */
-    if (get_stop_value(sh.stop, sh.stopRead) < 0) {
+    if (get_stop_value(sh.stop, sh.stop_read) < 0) {
         /* Contiamo il numero di processi che non hanno finito */
         for (j = 0; j < cfg.SO_USERS_NUM; j++) {
-            if (sh.usersPIDs[j].status != PROCESS_FINISHED &&
-                sh.usersPIDs[j].status != PROCESS_FINISHED_PREMATURELY)
+            if (sh.users_pid[j].status != PROCESS_FINISHED &&
+                sh.users_pid[j].status != PROCESS_FINISHED_PREMATURELY)
                 k++;
         }
 

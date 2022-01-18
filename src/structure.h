@@ -2,8 +2,11 @@
 #ifndef STRUCTURE_H
 #define STRUCTURE_H
 
-#include "time.h"
+#include "config.h"
 
+#include <time.h>
+
+/* Struttura per tenere informazioni su una singola transazione */
 struct Transazione {
     /* Timestamp della transazione con risoluzione dei nanosecondi
         (vedere funzione clock_gettime()) */
@@ -22,12 +25,16 @@ struct Transazione {
     unsigned int reward;
 };
 
+/* Struttura wrapper per inviare un messaggio contenente una transazione */
 struct Messaggio {
+    /* Tipo di messaggio (richiesto dalle message queue) */
     long m_type;
+
+    /* Transazione da inviare */
     struct Transazione transazione;
 };
 
-/* Struttura per tenere lo stato di un processo e il suo pid */
+/* Struttura per tenere lo stato di un processo nodo */
 struct ProcessoNode {
     /* PID del processo */
     pid_t pid;
@@ -42,9 +49,10 @@ struct ProcessoNode {
     int transactions;
 
     /* ID della coda di messaggi usata dal processo nodo per ricevere transazioni */
-    int msgID;
+    int msg_id;
 };
 
+/* Struttura per tenere lo stato di un processo user */
 struct ProcessoUser {
     /* PID del processo */
     pid_t pid;
@@ -56,33 +64,72 @@ struct ProcessoUser {
     double balance;
 };
 
+/* Struttura che identifica un singolo blocco nel ledger (libro mastro) */
 struct Blocco {
     struct Transazione transazioni[SO_BLOCK_SIZE];
 };
 
+/* ID di tutte le shared memory usate all'interno del programma */
 struct SharedMemoryID {
+    /* Libro mastro */
     int ledger;
-    int nodePIDs;
-    int usersPIDs;
-    int MMTS;
-    int MMTS_freeBlock;
-    int ledgerRead;
+
+    /* Array di stato dei processi nodi */
+    int nodes_pid;
+
+    /* Array di stato dei processi utenti */
+    int users_pid;
+
+    /* Array per le transazione generate attraverso un segnale */
+    int mmts;
+
+    /* Prima riga libera nell'array mmts */
+    int mmts_free_block;
+
+    /* Numero di processi attualmente in lettura su ledger */
+    int ledger_read;
+
+    /* Flag usato per far uscire i processi e per sapere perchè sono usciti */
     int stop;
-    int freeBlock;
-    int stopRead;
+
+    /* Primo blocco libero nel ledger (libro mastro) */
+    int ledger_free_block;
+
+    /* Numero di processi in lettura su stop */
+    int stop_read;
+
+    /* ID dell'array di semafori */
     int sem;
 };
 
+/* Struttura dati per contenere la memoria condivisa usata nel programma */
 struct SharedMemory {
+    /* Libro mastro */
     struct Blocco *ledger;
-    struct ProcessoNode *nodePIDs;
-    struct ProcessoUser *usersPIDs;
-    struct Transazione *MMTS;
-    unsigned int *ledgerRead;
-    unsigned int *stopRead;
+
+    /* Array di stato dei processi nodi */
+    struct ProcessoNode *nodes_pid;
+
+    /* Array di stato dei processi utenti */
+    struct ProcessoUser *users_pid;
+
+    /* Array per le transazione generate attraverso un segnale */
+    struct Transazione *mmts;
+
+    /* Prima riga libera nell'array mmts */
+    int *mmts_free_block;
+
+    /* Numero di processi attualmente in lettura su ledger */
+    unsigned int *ledger_read;
+
+    /* Flag usato per far uscire i processi e per sapere perchè sono usciti */
     int *stop;
-    int *freeBlock;
-    int *MMTS_freeBlock;
+
+    /* Primo blocco libero nel ledger (libro mastro) */
+    int *ledger_free_block;
+
+    /* Numero di processi in lettura su stop */
+    unsigned int *stop_read;
 };
 
 #endif

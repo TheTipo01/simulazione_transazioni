@@ -3,4 +3,15 @@ project(simulazione_transazioni C)
 
 set(CMAKE_C_STANDARD 90)
 
-add_executable(simulazione_transazioni src/master.c)
+set(SOURCES
+        src/user.c
+        src/node.c
+        src/config.c
+        src/master.c
+        src/rwlock.c
+        src/shared_memory.c
+        src/utilities.c
+        vendor/libsem.c
+        )
+
+add_executable(simulazione_transazioni ${SOURCES})
