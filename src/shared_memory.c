@@ -43,6 +43,12 @@ void get_shared_ids() {
     ids.mmts_free_block = shmget(IPC_PRIVATE, sizeof(int), GET_FLAGS);
     shmget_error_checking(ids.mmts_free_block);
 
+    ids.new_nodes_pid = shmget(IPC_PRIVATE, sizeof(int), GET_FLAGS);
+    shmget_error_checking(ids.mmts_free_block);
+
+    ids.nodes_pid_read = shmget(IPC_PRIVATE, sizeof(unsigned int), GET_FLAGS);
+    shmget_error_checking(ids.mmts_free_block);
+
     /* Inizializziamo i semafori che usiamo */
     ids.sem = semget(IPC_PRIVATE, NUM_SEMAFORI, GET_FLAGS);
     TEST_ERROR;
@@ -79,7 +85,10 @@ void attach_shared_memory() {
     sh.mmts = shmat(ids.mmts, NULL, 0);
     TEST_ERROR;
 
-    sh.mmts_free_block = shmat(ids.mmts_free_block, NULL, 0);
+    sh.new_nodes_pid = shmat(ids.new_nodes_pid, NULL, 0);
+    TEST_ERROR;
+
+    sh.nodes_pid_read = shmat(ids.nodes_pid_read, NULL, 0);
     TEST_ERROR;
 }
 
@@ -91,6 +100,8 @@ void detach_and_delete() {
     shmdt_error_checking(sh.stop);
     shmdt_error_checking(sh.ledger_free_block);
     shmdt_error_checking(sh.stop_read);
+    shmdt_error_checking(sh.new_nodes_pid);
+    shmdt_error_checking(sh.nodes_pid_read);
 
     semctl(ids.sem, 0, IPC_RMID);
     shmctl(ids.nodes_pid, IPC_RMID, NULL);

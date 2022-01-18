@@ -6,6 +6,7 @@ enum semafori {
     STOP_READ,
     STOP_WRITE,
     MMTS,
+    NODES_PID,
     FINE_SEMAFORI
 };
 

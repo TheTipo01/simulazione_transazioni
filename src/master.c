@@ -19,7 +19,6 @@
 #include <sys/wait.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#include <sys/sem.h>
 #include <sys/msg.h>
 
 /*
@@ -35,6 +34,7 @@ struct SharedMemoryID ids;
 int main(int argc, char *argv[]) {
     unsigned int exec_time = 0;
     int i, cont, current_pid, status;
+    struct Messaggio temp_tran;
     sigset_t wset;
 
     /* Disattiviamo il buffering di stdout per stampare subito lo stato della simulazione */
@@ -48,13 +48,18 @@ int main(int argc, char *argv[]) {
     /* E successivo attach */
     attach_shared_memory();
 
-    /* In questo punto del codice solo il processo master può leggere/scrivere su stop */
+    /* In questo punto del codice solo il processo master può leggere/scrivere sulle shared memory */
     *sh.stop = -1;
+    *sh.new_nodes_pid = ids.nodes_pid;
 
     /* I semafori usati li usiamo come mutex: inizializziamo i loro valori ad 1 */
     for (i = 0; i < NUM_SEMAFORI; i++) {
-        semctl(ids.sem, i, SETVAL, 1);
+        sem_set_val(ids.sem, i, 1);
     }
+
+    /* Inizializziamo la coda di messaggi del processo master, utilizzata per ricevere transazioni dai processi nodo,
+     * che poi dovrà mandare ad altri processi nodo creati da lui stesso. */
+    ids.master_msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
@@ -128,6 +133,45 @@ int main(int argc, char *argv[]) {
         delete_message_queue();
 
         exit(EXIT_SUCCESS);
+    }
+
+    if (!fork()) {
+        /* Blocchiamo anche nel fork i segnali usati dai processi user/node */
+        sigprocmask(SIG_SETMASK, &wset, NULL);
+
+        while (1) {
+            msgrcv(ids.master_msg_id, &temp_tran, msg_size(), 1, 0);
+            if (errno) {
+                if (get_stop_value(sh.stop, sh.stop_read) != -1) {
+                    exit(EXIT_SUCCESS);
+                } else {
+                    fprintf(stderr, "%s:%d: PID=%5d: Error %d (%s)\n", __FILE__, __LINE__, getpid(), errno,
+                            strerror(errno));
+                }
+            }
+
+            /*
+             * TODO: fare funzione che allarga nodes_pid
+             * TODO: fare funzione che controlli e riattacchi la mem condivisa
+             */
+
+            switch (current_pid = fork()) {
+                case -1:
+                    fprintf(stderr, "Error forking\n");
+                    exit(EXIT_FAILURE);
+                case 0:
+                    start_node(i);
+                    exit(EXIT_SUCCESS);
+                default:
+                    cfg.SO_NODES_NUM++;
+                    sh.nodes_pid[cfg.SO_NODES_NUM + 1].pid = current_pid;
+                    sh.nodes_pid[cfg.SO_NODES_NUM + 1].balance = 0;
+                    sh.nodes_pid[cfg.SO_NODES_NUM + 1].status = PROCESS_WAITING;
+                    sh.nodes_pid[cfg.SO_NODES_NUM + 1].transactions = 0;
+                    sh.nodes_pid[cfg.SO_NODES_NUM + 1].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
+            }
+
+        }
     }
 
     /* Aspettiamo che i processi finiscano */

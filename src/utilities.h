@@ -69,4 +69,7 @@ char *format_time(time_t rawtime);
  * per la visualizzazione, nella funzione print_status e print_more_status. */
 char *get_status(int status);
 
+/* Funzione che ritorna un numero casuale in un range definito. */
+long random_between_two(long min, long max);
+
 #endif
