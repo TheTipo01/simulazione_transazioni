@@ -9,6 +9,7 @@
 #include "master.h"
 #include "../vendor/libsem.h"
 #include "rwlock.h"
+#include "enum.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -106,6 +107,51 @@ int main(int argc, char *argv[]) {
     /* Notifichiamo i processi che gli array dei pid sono stati popolati */
     kill(0, SIGUSR1);
 
+    if (!fork()) {
+        /* Blocchiamo anche nel fork i segnali usati dai processi user/node */
+        sigprocmask(SIG_SETMASK, &wset, NULL);
+
+        while (get_stop_value() != -1) {
+            msgrcv(ids.master_msg_id, &temp_tran, msg_size(), 1, 0);
+            if (errno) {
+                if (get_stop_value() != -1) {
+                    exit(EXIT_SUCCESS);
+                } else {
+                    fprintf(stderr, "%s:%d: PID=%5d: Error %d (%s)\n", __FILE__, __LINE__, getpid(), errno,
+                            strerror(errno));
+                }
+            }
+
+            fprintf(stderr, "SPAWN NUOVO NODO RN\n");
+
+            sem_reserve(ids.sem, NODES_PID_WRITE);
+
+            expand_node();
+
+            switch (current_pid = fork()) {
+                case -1:
+                    fprintf(stderr, "Error forking\n");
+                    exit(EXIT_FAILURE);
+                case 0:
+                    start_node(i);
+                    exit(EXIT_SUCCESS);
+                default:
+                    cfg.SO_NODES_NUM++;
+                    sh.nodes_pid[cfg.SO_NODES_NUM].pid = current_pid;
+                    sh.nodes_pid[cfg.SO_NODES_NUM].balance = 0;
+                    sh.nodes_pid[cfg.SO_NODES_NUM].status = PROCESS_WAITING;
+                    sh.nodes_pid[cfg.SO_NODES_NUM].transactions = 0;
+                    sh.nodes_pid[cfg.SO_NODES_NUM].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
+            }
+
+            msgsnd(sh.nodes_pid[cfg.SO_NODES_NUM].msg_id, &temp_tran, msg_size(), 0);
+
+            sem_release(ids.sem, NODES_PID_WRITE);
+        }
+
+        exit(EXIT_SUCCESS);
+    }
+
     /*
      * Tempo di esecuzione della simulazione = SO_SIM_SEC.
      * Usiamo un altra fork per generare un processo che tenga conto del tempo di esecuzione e stampi a schermo i dati.
@@ -116,9 +162,10 @@ int main(int argc, char *argv[]) {
         sigprocmask(SIG_SETMASK, &wset, NULL);
 
         do {
+            check_for_update();
             print_more_status(sh.nodes_pid, sh.users_pid);
             exec_time++;
-        } while (exec_time < cfg.SO_SIM_SEC && !sleeping(1000000000) && get_stop_value(sh.stop, sh.stop_read) == -1);
+        } while (exec_time < cfg.SO_SIM_SEC && !sleeping(1000000000) && get_stop_value() == -1);
 
         if (exec_time == cfg.SO_SIM_SEC) {
             sem_reserve(ids.sem, STOP_WRITE);
@@ -135,45 +182,6 @@ int main(int argc, char *argv[]) {
         exit(EXIT_SUCCESS);
     }
 
-    if (!fork()) {
-        /* Blocchiamo anche nel fork i segnali usati dai processi user/node */
-        sigprocmask(SIG_SETMASK, &wset, NULL);
-
-        while (1) {
-            msgrcv(ids.master_msg_id, &temp_tran, msg_size(), 1, 0);
-            if (errno) {
-                if (get_stop_value(sh.stop, sh.stop_read) != -1) {
-                    exit(EXIT_SUCCESS);
-                } else {
-                    fprintf(stderr, "%s:%d: PID=%5d: Error %d (%s)\n", __FILE__, __LINE__, getpid(), errno,
-                            strerror(errno));
-                }
-            }
-
-            /*
-             * TODO: fare funzione che allarga nodes_pid
-             * TODO: fare funzione che controlli e riattacchi la mem condivisa
-             */
-
-            switch (current_pid = fork()) {
-                case -1:
-                    fprintf(stderr, "Error forking\n");
-                    exit(EXIT_FAILURE);
-                case 0:
-                    start_node(i);
-                    exit(EXIT_SUCCESS);
-                default:
-                    cfg.SO_NODES_NUM++;
-                    sh.nodes_pid[cfg.SO_NODES_NUM + 1].pid = current_pid;
-                    sh.nodes_pid[cfg.SO_NODES_NUM + 1].balance = 0;
-                    sh.nodes_pid[cfg.SO_NODES_NUM + 1].status = PROCESS_WAITING;
-                    sh.nodes_pid[cfg.SO_NODES_NUM + 1].transactions = 0;
-                    sh.nodes_pid[cfg.SO_NODES_NUM + 1].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
-            }
-
-        }
-    }
-
     /* Aspettiamo che i processi finiscano */
     for (i = 0; i < cfg.SO_NODES_NUM + cfg.SO_USERS_NUM; i++) {
         waitpid(-1, &status, 0);
@@ -185,7 +193,7 @@ int main(int argc, char *argv[]) {
      */
 
     /* Stampa della causa di terminazione della simulazione */
-    switch (get_stop_value(sh.stop, sh.stop_read)) {
+    switch (get_stop_value()) {
         case LEDGERFULL:
             fprintf(stdout, "--- TERMINE SIMULAZIONE ---\nCausa terminazione: il libro mastro è pieno.\n\n");
             break;

@@ -35,6 +35,7 @@ struct Transazione generate_reward(double tot_reward) {
 
 void start_node(unsigned int index) {
     int sig, i, last = 0, block_pointer, target_node;
+    long tempval;
     double block_reward;
     struct Messaggio t_rcv;
     struct sigaction sa;
@@ -61,39 +62,48 @@ void start_node(unsigned int index) {
     sigprocmask(SIG_SETMASK, &wset, NULL);
 
     /* Ciclo principale di ricezione e processing delle transazioni */
+    check_for_update();
     sh.nodes_pid[node_position].status = PROCESS_RUNNING;
-    while (get_stop_value(sh.stop, sh.stop_read) < 0) {
+    while (get_stop_value() < 0) {
         /* Variabile per tenere conto del reward ottenuto dal nodo per ogni blocco processato*/
         block_reward = 0;
 
         /* Ciclo che riceve SO_BLOCK_SIZE-1 transazioni */
         do {
-            /* Ricezione di un messaggio di tipo 1 (transazione da utente) usando coda di messaggi + error checking */
-            msgrcv(sh.nodes_pid[node_position].msg_id, &t_rcv, msg_size(), 1, 0);
-            if (errno) {
-                if (get_stop_value(sh.stop, sh.stop_read) != -1) {
-                    goto cleanup;
-                } else {
-                    fprintf(stderr, "%s:%d: PID=%5d: Error %d (%s)\n", __FILE__, __LINE__, getpid(), errno,
-                            strerror(errno));
+            if (last != cfg.SO_TP_SIZE) {
+                /* Ricezione di un messaggio di tipo 1 (transazione da utente) usando coda di messaggi + error checking */
+                msgrcv(get_node(node_position).msg_id, &t_rcv, msg_size(), 1, 0);
+                if (errno) {
+                    if (get_stop_value() != -1) {
+                        goto cleanup;
+                    } else {
+                        fprintf(stderr, "%s:%d: PID=%5d: Error %d (%s)\n", __FILE__, __LINE__, getpid(), errno,
+                                strerror(errno));
+                    }
                 }
-            }
 
-            if (random_between_two(1, 10) == 10) {
-                target_node = (int) (random() % cfg.SO_NODES_NUM);
-                msgsnd(sh.nodes_pid[target_node].msg_id, &t_rcv, msg_size(), 0);
-            } else {
-                /* Scrittura nella TP della transazione ricevuta e assegnazione del reward */
-                transaction_pool[last].quantity =
-                        t_rcv.transazione.quantity * ((100.0 - t_rcv.transazione.reward) / 100);
-                transaction_pool[last].reward = t_rcv.transazione.reward;
-                transaction_pool[last].sender = t_rcv.transazione.sender;
-                transaction_pool[last].receiver = t_rcv.transazione.receiver;
-                transaction_pool[last].timestamp = t_rcv.transazione.timestamp;
-                sh.nodes_pid[node_position].balance += t_rcv.transazione.quantity * (t_rcv.transazione.reward / 100.0);
-                block_reward += t_rcv.transazione.quantity * (t_rcv.transazione.reward / 100.0);
-                sh.nodes_pid[node_position].transactions++;
-                last++;
+                tempval = random_between_two(1, 10);
+                if (tempval == 1) {
+                    check_for_update();
+                    target_node = (int) (random() % cfg.SO_NODES_NUM);
+                    msgsnd(get_node(target_node).msg_id, &t_rcv, msg_size(), 0);
+                } else {
+                    /* Scrittura nella TP della transazione ricevuta e assegnazione del reward */
+                    transaction_pool[last].quantity =
+                            t_rcv.transazione.quantity * ((100.0 - t_rcv.transazione.reward) / 100);
+                    transaction_pool[last].reward = t_rcv.transazione.reward;
+                    transaction_pool[last].sender = t_rcv.transazione.sender;
+                    transaction_pool[last].receiver = t_rcv.transazione.receiver;
+                    transaction_pool[last].timestamp = t_rcv.transazione.timestamp;
+                    block_reward += t_rcv.transazione.quantity * (t_rcv.transazione.reward / 100.0);
+
+                    check_for_update();
+                    sh.nodes_pid[node_position].balance +=
+                            t_rcv.transazione.quantity * (t_rcv.transazione.reward / 100.0);
+                    sh.nodes_pid[node_position].transactions++;
+
+                    last++;
+                }
             }
         } while ((last % (SO_BLOCK_SIZE - 1)) != 0 && last != cfg.SO_TP_SIZE);
 
@@ -131,14 +141,16 @@ void start_node(unsigned int index) {
             kill(t_rcv.transazione.receiver, SIGUSR1);
         } else {
             /* Se la TP è piena, chiudiamo la coda di messaggi, in modo che il nodo non possa più accettare transazioni. */
+            check_for_update();
             sh.nodes_pid[node_position].status = PROCESS_WAITING;
-            msgrcv(sh.nodes_pid[node_position].msg_id, &t_rcv, msg_size(), 1, 0);
-            if (t_rcv.hops == 5) {
+            msgrcv(get_node(node_position).msg_id, &t_rcv, msg_size(), 1, 0);
+            if (t_rcv.hops == cfg.SO_HOPS) {
                 msgsnd(ids.master_msg_id, &t_rcv, msg_size(), 0);
             } else {
+                check_for_update();
                 target_node = (int) (random() % cfg.SO_NODES_NUM);
                 t_rcv.hops++;
-                msgsnd(sh.nodes_pid[target_node].msg_id, &t_rcv, msg_size(), 0);
+                msgsnd(get_node(target_node).msg_id, &t_rcv, msg_size(), 0);
             }
         }
     }
@@ -146,6 +158,7 @@ void start_node(unsigned int index) {
     cleanup:
     /* Cleanup prima di uscire */
     /* Impostazione dello stato del nostro processo */
+    check_for_update();
     sh.nodes_pid[node_position].status = PROCESS_FINISHED;
 
     /* Liberiamo la memoria allocata con malloc */

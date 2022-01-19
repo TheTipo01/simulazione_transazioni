@@ -4,6 +4,7 @@
 #include "utilities.h"
 #include "master.h"
 #include "enum.h"
+#include "shared_memory.h"
 
 #include <stdio.h>
 #include <sys/shm.h>
@@ -112,7 +113,7 @@ void print_more_status() {
         b3_users[i].status = 0;
         b3_users[i].pid = 0;
 
-        b3_nodes[i].balance = cfg.SO_BUDGET_INIT + 1;
+        b3_nodes[i].balance = 2147483647;
         b3_nodes[i].status = 0;
         b3_nodes[i].pid = 0;
     }
@@ -228,7 +229,34 @@ int sleeping(long waiting_time) {
 }
 
 long random_between_two(long min, long max) {
-    return random() % (max - min + 1) + min
+    return random() % (max - min + 1) + min;
+}
+
+void expand_node() {
+    struct ProcessoNode *new;
+    int i;
+
+    /* Creazione e copia del vecchio segmento nel nuovo più grande */
+    ids.new_nodes_pid = shmget(IPC_PRIVATE, (cfg.SO_NODES_NUM + 1) * sizeof(struct ProcessoNode), GET_FLAGS);
+    new = shmat(ids.new_nodes_pid, NULL, 0);
+
+    for (i = 0; i < cfg.SO_NODES_NUM; i++) {
+        new[i] = sh.nodes_pid[i];
+    }
+
+    shmdt_error_checking(sh.nodes_pid);
+    shmctl(ids.nodes_pid, IPC_RMID, NULL);
+
+    sh.nodes_pid = new;
+    ids.nodes_pid = ids.new_nodes_pid;
+}
+
+void check_for_update() {
+    if (*sh.new_nodes_pid != ids.nodes_pid) {
+        ids.nodes_pid = *sh.new_nodes_pid;
+        cfg.SO_NODES_NUM++;
+        sh.nodes_pid = shmat(ids.nodes_pid, NULL, 0);
+    }
 }
 
 #endif

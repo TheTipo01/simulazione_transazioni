@@ -48,11 +48,13 @@ double calc_entrate(int sem_id, struct Blocco *lm, unsigned int *read_counter) {
 void transaction_generator(int sig) {
     struct Messaggio msg;
     int feedback;
+    long receiver, target_node;
 
     /* Puntatore al mittente e destinatario scelto casualmente (il PID verrà preso dalla lista di nodi/utenti a cui
      * si accede col puntatore ottenuto) */
-    long receiver = random() % cfg.SO_USERS_NUM;
-    long target_node = random() % cfg.SO_NODES_NUM;
+    check_for_update();
+    receiver = random() % cfg.SO_USERS_NUM;
+    target_node = random() % cfg.SO_NODES_NUM;
 
     /* Generazione della transazione */
     msg.transazione.sender = getpid();
@@ -71,9 +73,11 @@ void transaction_generator(int sig) {
     }
 
     msg.m_type = 1;
+    msg.hops = 0;
 
     /* Invio al nodo la transazione */
-    feedback = msgsnd(sh.nodes_pid[target_node].msg_id, &msg, msg_size(), 0);
+    check_for_update();
+    feedback = msgsnd(get_node(target_node).msg_id, &msg, msg_size(), 0);
 
     sem_reserve(ids.sem, (int) (FINE_SEMAFORI + user_position));
     if (feedback == -1) {
@@ -124,7 +128,7 @@ void start_user(unsigned int index) {
     signal(SIGUSR2, transaction_generator);
 
     /* Ciclo principale di generazione delle transazioni */
-    while (failed_transaction_user < cfg.SO_RETRY && get_stop_value(sh.stop, sh.stop_read) == -1) {
+    while (failed_transaction_user < cfg.SO_RETRY && get_stop_value() == -1) {
         sh.users_pid[user_position].status = PROCESS_RUNNING;
         sem_reserve(ids.sem, (int) (FINE_SEMAFORI + user_position));
 
@@ -162,7 +166,7 @@ void start_user(unsigned int index) {
 
     /* Se non c'è stato un ordine di uscire, controlliamo se gli altri processi
      * abbiano finito */
-    if (get_stop_value(sh.stop, sh.stop_read) < 0) {
+    if (get_stop_value() < 0) {
         /* Contiamo il numero di processi che non hanno finito */
         for (j = 0; j < cfg.SO_USERS_NUM; j++) {
             if (sh.users_pid[j].status != PROCESS_FINISHED &&

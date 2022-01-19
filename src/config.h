@@ -2,10 +2,10 @@
 #define CONFIG_H
 
 /* Numero di transazioni contenute in un blocco */
-#define SO_BLOCK_SIZE 100
+#define SO_BLOCK_SIZE 10
 
 /* Numero massimo di blocchi nel libro mastro */
-#define SO_REGISTRY_SIZE 1000
+#define SO_REGISTRY_SIZE 10000
 
 typedef struct Config {
     /* Numero di processi utente */

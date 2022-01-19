@@ -72,4 +72,11 @@ char *get_status(int status);
 /* Funzione che ritorna un numero casuale in un range definito. */
 long random_between_two(long min, long max);
 
+/* Funzione delegata di allargare il  */
+void expand_node();
+
+/* Funzione che controlla se bisogna eseguire il reattach della shared mem, solitamente accade dopo che viene creato un
+ * nuovo nodo (l'array nodes_pid in memoria condivisa viene espanso)*/
+void check_for_update();
+
 #endif
