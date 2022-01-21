@@ -111,7 +111,7 @@ int main(int argc, char *argv[]) {
         /* Blocchiamo anche nel fork i segnali usati dai processi user/node */
         sigprocmask(SIG_SETMASK, &wset, NULL);
 
-        while (get_stop_value() != -1) {
+        while (get_stop_value() == -1) {
             msgrcv(ids.master_msg_id, &temp_tran, msg_size(), 1, 0);
             if (errno) {
                 if (get_stop_value() != -1) {
@@ -121,8 +121,6 @@ int main(int argc, char *argv[]) {
                             strerror(errno));
                 }
             }
-
-            fprintf(stderr, "SPAWN NUOVO NODO RN\n");
 
             sem_reserve(ids.sem, NODES_PID_WRITE);
 

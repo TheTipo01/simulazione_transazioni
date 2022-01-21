@@ -10,3 +10,7 @@ Per compilare il programma è necessario avere installato sulla propria macchina
 Nella cartella [configs](/configs) ci sono degli script per avviare il programma: basta scaricare il progetto, fare il
 comando `make` nella cartella principale del progetto (verrà creato l'eseguibile `master`), ed infine avviare uno degli
 script dalla cartella in cui è presente l'eseguibile (per esempio, `./configs/conf1.sh`)
+
+## Funzionamento
+
+![Diagramma di funzionamento programma](diagram.svg)
