@@ -100,6 +100,8 @@ void print_more_status() {
 
     setvbuf(stdout, NULL, _IONBF, 0);
 
+    check_for_update();
+
     for (i = 0; i < 3; i++) {
         t3_users[i].balance = 0;
         t3_users[i].status = 0;
@@ -237,8 +239,8 @@ void expand_node() {
     int i;
 
     /* Creazione e copia del vecchio segmento nel nuovo più grande */
-    ids.new_nodes_pid = shmget(IPC_PRIVATE, (cfg.SO_NODES_NUM + 1) * sizeof(struct ProcessoNode), GET_FLAGS);
-    new = shmat(ids.new_nodes_pid, NULL, 0);
+    *sh.new_nodes_pid = shmget(IPC_PRIVATE, (cfg.SO_NODES_NUM + 1) * sizeof(struct ProcessoNode), GET_FLAGS);
+    new = shmat(*sh.new_nodes_pid, NULL, 0);
 
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         new[i] = sh.nodes_pid[i];
@@ -253,8 +255,9 @@ void expand_node() {
 
 void check_for_update() {
     if (*sh.new_nodes_pid != ids.nodes_pid) {
-        ids.nodes_pid = *sh.new_nodes_pid;
         cfg.SO_NODES_NUM++;
+        ids.nodes_pid = *sh.new_nodes_pid;
+        shmdt_error_checking(sh.nodes_pid);
         sh.nodes_pid = shmat(ids.nodes_pid, NULL, 0);
     }
 }

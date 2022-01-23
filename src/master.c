@@ -126,15 +126,15 @@ int main(int argc, char *argv[]) {
 
             expand_node();
 
+            cfg.SO_NODES_NUM++;
             switch (current_pid = fork()) {
                 case -1:
                     fprintf(stderr, "Error forking\n");
                     exit(EXIT_FAILURE);
                 case 0:
-                    start_node(i);
+                    start_node(cfg.SO_NODES_NUM);
                     exit(EXIT_SUCCESS);
                 default:
-                    cfg.SO_NODES_NUM++;
                     sh.nodes_pid[cfg.SO_NODES_NUM].pid = current_pid;
                     sh.nodes_pid[cfg.SO_NODES_NUM].balance = 0;
                     sh.nodes_pid[cfg.SO_NODES_NUM].status = PROCESS_WAITING;

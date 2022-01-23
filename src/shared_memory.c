@@ -44,10 +44,10 @@ void get_shared_ids() {
     shmget_error_checking(ids.mmts_free_block);
 
     ids.new_nodes_pid = shmget(IPC_PRIVATE, sizeof(int), GET_FLAGS);
-    shmget_error_checking(ids.mmts_free_block);
+    shmget_error_checking(ids.new_nodes_pid);
 
     ids.nodes_pid_read = shmget(IPC_PRIVATE, sizeof(unsigned int), GET_FLAGS);
-    shmget_error_checking(ids.mmts_free_block);
+    shmget_error_checking(ids.nodes_pid_read);
 
     /* Inizializziamo i semafori che usiamo */
     ids.sem = semget(IPC_PRIVATE, NUM_SEMAFORI, GET_FLAGS);
