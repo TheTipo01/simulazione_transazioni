@@ -52,8 +52,8 @@ void transaction_generator(int sig) {
 
     /* Puntatore al mittente e destinatario scelto casualmente (il PID verrà preso dalla lista di nodi/utenti a cui
      * si accede col puntatore ottenuto) */
-    check_for_update();
     receiver = random() % cfg.SO_USERS_NUM;
+    check_for_update();
     target_node = random() % cfg.SO_NODES_NUM;
 
     /* Generazione della transazione */
@@ -65,12 +65,7 @@ void transaction_generator(int sig) {
     else
         msg.transazione.reward = cfg.SO_REWARD;
 
-    msg.transazione.quantity = random() % (cfg.SO_BUDGET_INIT + 1 - 2) + 2;
-
-    /* Se abbiamo generato una quantità superiore al bilancio, prendiamo il rimanente del bilancio */
-    if (msg.transazione.quantity > sh.users_pid[user_position].balance) {
-        msg.transazione.quantity = sh.users_pid[user_position].balance - 2;
-    }
+    msg.transazione.quantity = (double) random_between_two(2, sh.users_pid[user_position].balance);
 
     msg.m_type = 1;
     msg.hops = 0;
@@ -92,6 +87,7 @@ void transaction_generator(int sig) {
 
         /* Se il segnale ricevuto è SIGUSR2, significa che questa funzione è stata chiamata inviando un segnale ad un processo utente */
         if (sig == SIGUSR2) {
+            fprintf(stderr, "AO\n");
             sem_reserve(ids.sem, MMTS);
             sh.mmts[*sh.mmts_free_block] = msg.transazione;
             *sh.mmts_free_block += 1;
@@ -105,7 +101,7 @@ void start_user(unsigned int index) {
     int sig, j, k = 0;
     sigset_t wset;
 
-    /* Seeding di rand con il pid del processo */
+    /* Seeding di rand con il index del processo */
     srandom(getpid());
 
     /* Copia parametri in variabili globali */
@@ -152,7 +148,27 @@ void start_user(unsigned int index) {
 
             /* Se non c'è abbastanza bilancio, aspettiamo finchè l'utente non riceve una transazione */
             sh.users_pid[user_position].status = PROCESS_WAITING;
-            sigwait(&wset, &sig);
+
+            sem_reserve(ids.sem, USER_WAITING);
+            *sh.user_waiting += 1;
+
+            /* Se tutti i processi stanno aspettando, possiamo terminare la simulazione */
+            if (*sh.user_waiting == cfg.SO_USERS_NUM) {
+                sem_release(ids.sem, USER_WAITING);
+
+                sem_reserve(ids.sem, STOP_WRITE);
+                *sh.stop = NOBALANCE;
+                sem_release(ids.sem, STOP_WRITE);
+                kill(0, SIGUSR1);
+            } else {
+                sem_release(ids.sem, USER_WAITING);
+
+                sigwait(&wset, &sig);
+
+                sem_reserve(ids.sem, USER_WAITING);
+                *sh.user_waiting -= 1;
+                sem_release(ids.sem, USER_WAITING);
+            }
         }
     }
 

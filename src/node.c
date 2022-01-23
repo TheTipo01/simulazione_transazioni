@@ -61,10 +61,12 @@ void start_node(unsigned int index) {
     /* Mascheriamo i segnali che usiamo */
     sigprocmask(SIG_SETMASK, &wset, NULL);
 
+    signal(SIGALRM, enlarge_friends);
+
     /* Ciclo principale di ricezione e processing delle transazioni */
     check_for_update();
     sh.nodes_pid[node_position].status = PROCESS_RUNNING;
-    while (get_stop_value() < 0) {
+    while (get_stop_value() == -1) {
         /* Variabile per tenere conto del reward ottenuto dal nodo per ogni blocco processato*/
         block_reward = 0;
 
@@ -85,8 +87,8 @@ void start_node(unsigned int index) {
                 tempval = random_between_two(1, 10);
                 if (tempval == 1) {
                     check_for_update();
-                    target_node = (int) (random() % cfg.SO_NODES_NUM);
-                    msgsnd(get_node(target_node).msg_id, &t_rcv, msg_size(), 0);
+                    target_node = (int) random_between_two(0, cfg.SO_NUM_FRIENDS);
+                    msgsnd(get_node(get_node(node_position).friends[target_node]).msg_id, &t_rcv, msg_size(), 0);
                 } else {
                     /* Scrittura nella TP della transazione ricevuta e assegnazione del reward */
                     transaction_pool[last].quantity =
@@ -119,6 +121,8 @@ void start_node(unsigned int index) {
             /* Ci riserviamo un blocco nel libro mastro aumentando il puntatore dei blocchi liberi */
             sem_reserve(ids.sem, LEDGER_WRITE);
 
+            fprintf(stderr, "%d - %d\n", *sh.ledger_free_block, getpid());
+
             /* Ledger pieno: usciamo */
             if (*sh.ledger_free_block == SO_REGISTRY_SIZE) {
                 sem_reserve(ids.sem, STOP_WRITE);
@@ -142,13 +146,18 @@ void start_node(unsigned int index) {
         } else {
             /* Se la TP è piena, chiudiamo la coda di messaggi, in modo che il nodo non possa più accettare transazioni. */
             check_for_update();
+            sem_reserve(ids.sem, NODES_PID_WRITE);
             sh.nodes_pid[node_position].status = PROCESS_WAITING;
+            sem_release(ids.sem, NODES_PID_WRITE);
+
+            /* Ogni nuova transazione verrà inoltrata ad altri nodi scelti casualmente */
+            fprintf(stderr, "node aspetta\n");
             msgrcv(get_node(node_position).msg_id, &t_rcv, msg_size(), 1, 0);
             if (t_rcv.hops == cfg.SO_HOPS) {
                 msgsnd(ids.master_msg_id, &t_rcv, msg_size(), 0);
             } else {
                 check_for_update();
-                target_node = (int) (random() % cfg.SO_NODES_NUM);
+                target_node = get_node(node_position).friends[random_between_two(0, cfg.SO_NUM_FRIENDS)];
                 t_rcv.hops++;
                 msgsnd(get_node(target_node).msg_id, &t_rcv, msg_size(), 0);
             }
@@ -163,4 +172,20 @@ void start_node(unsigned int index) {
 
     /* Liberiamo la memoria allocata con malloc */
     free(transaction_pool);
+    free(sh.nodes_pid[node_position].friends);
+}
+
+void enlarge_friends(int sig) {
+    struct Messaggio_PID msg;
+    if (sig == SIGALRM) {
+        msgrcv(get_node(node_position).msg_id, &msg, sizeof(int), 2, 0);
+
+        cfg.SO_NODES_NUM += 1;
+
+        sem_reserve(ids.sem, NODES_PID_WRITE);
+        sh.nodes_pid[node_position].friends = realloc(sh.nodes_pid[node_position].friends,
+                                                      sizeof(int) * cfg.SO_NODES_NUM);
+        sh.nodes_pid[node_position].friends[cfg.SO_NODES_NUM - 1] = msg.index;
+        sem_release(ids.sem, NODES_PID_WRITE);
+    }
 }

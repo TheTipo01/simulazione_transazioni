@@ -34,8 +34,9 @@ struct SharedMemoryID ids;
 
 int main(int argc, char *argv[]) {
     unsigned int exec_time = 0;
-    int i, cont, current_pid, status;
+    int i, j, cont, current_pid, status;
     struct Messaggio temp_tran;
+    struct Messaggio_PID temp_pid;
     sigset_t wset;
 
     /* Disattiviamo il buffering di stdout per stampare subito lo stato della simulazione */
@@ -85,6 +86,10 @@ int main(int argc, char *argv[]) {
                 sh.nodes_pid[i].status = PROCESS_WAITING;
                 sh.nodes_pid[i].transactions = 0;
                 sh.nodes_pid[i].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
+                sh.nodes_pid[i].friends = malloc(sizeof(int) * cfg.SO_NUM_FRIENDS);
+                for (j = 0; j < cfg.SO_NUM_FRIENDS; j++) {
+                    sh.nodes_pid[i].friends[j] = random() % cfg.SO_NODES_NUM;
+                }
         }
     }
 
@@ -104,14 +109,16 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    /* Notifichiamo i processi che gli array dei pid sono stati popolati */
+    /* Notifichiamo i processi che gli array dei index sono stati popolati */
     kill(0, SIGUSR1);
 
     if (!fork()) {
         /* Blocchiamo anche nel fork i segnali usati dai processi user/node */
         sigprocmask(SIG_SETMASK, &wset, NULL);
 
+
         while (get_stop_value() == -1) {
+            /* Ricezione della transazione che ha fatto SO_HOPS salti */
             msgrcv(ids.master_msg_id, &temp_tran, msg_size(), 1, 0);
             if (errno) {
                 if (get_stop_value() != -1) {
@@ -124,9 +131,13 @@ int main(int argc, char *argv[]) {
 
             sem_reserve(ids.sem, NODES_PID_WRITE);
 
+            /* Espansione dell'array nodes_pid e aumento del numero di nodi presenti */
             expand_node();
-
             cfg.SO_NODES_NUM++;
+
+            fprintf(stderr, "semo qui\n");
+
+            /* Creazione del nuovo nodo */
             switch (current_pid = fork()) {
                 case -1:
                     fprintf(stderr, "Error forking\n");
@@ -135,14 +146,30 @@ int main(int argc, char *argv[]) {
                     start_node(cfg.SO_NODES_NUM);
                     exit(EXIT_SUCCESS);
                 default:
-                    sh.nodes_pid[cfg.SO_NODES_NUM].pid = current_pid;
-                    sh.nodes_pid[cfg.SO_NODES_NUM].balance = 0;
-                    sh.nodes_pid[cfg.SO_NODES_NUM].status = PROCESS_WAITING;
-                    sh.nodes_pid[cfg.SO_NODES_NUM].transactions = 0;
-                    sh.nodes_pid[cfg.SO_NODES_NUM].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
+                    sh.nodes_pid[cfg.SO_NODES_NUM - 1].pid = current_pid;
+                    sh.nodes_pid[cfg.SO_NODES_NUM - 1].balance = 0;
+                    sh.nodes_pid[cfg.SO_NODES_NUM - 1].status = PROCESS_WAITING;
+                    sh.nodes_pid[cfg.SO_NODES_NUM - 1].transactions = 0;
+                    sh.nodes_pid[cfg.SO_NODES_NUM - 1].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
+                    sh.nodes_pid[cfg.SO_NODES_NUM - 1].friends = malloc(sizeof(int) * cfg.SO_NUM_FRIENDS);
+
+                    for (j = 0; j < cfg.SO_NUM_FRIENDS; j++) {
+                        /* Popolazione della lista amici del nuovo nodo */
+                        sem_reserve(ids.sem, NODES_PID_WRITE);
+                        sh.nodes_pid[i].friends[j] = random() % cfg.SO_NODES_NUM;
+                        sem_reserve(ids.sem, NODES_PID_WRITE);
+
+                        /* Selezionamento di SO_NUM_FRIENDS nodi a cui deve essere aggiunto il nuovo nodo nella lista amici */
+                        temp_pid.index = (int) (random() % cfg.SO_NODES_NUM);
+                        temp_pid.m_type = 2;
+                        fprintf(stderr, "habemus not inviatum\n");
+                        msgsnd(get_node(temp_pid.index).msg_id, &temp_pid, sizeof(int), 0);
+                        fprintf(stderr, "habemus inviatum\n");
+                    }
             }
 
-            msgsnd(sh.nodes_pid[cfg.SO_NODES_NUM].msg_id, &temp_tran, msg_size(), 0);
+            fprintf(stderr, "CALABRIA\n");
+            msgsnd(sh.nodes_pid[cfg.SO_NODES_NUM - 1].msg_id, &temp_tran, msg_size(), 0);
 
             sem_release(ids.sem, NODES_PID_WRITE);
         }
@@ -198,6 +225,10 @@ int main(int argc, char *argv[]) {
         case TIMEDOUT:
             fprintf(stdout, "--- TERMINE SIMULAZIONE ---\nCausa terminazione: sono passati %d secondi.\n\n",
                     cfg.SO_SIM_SEC);
+            break;
+        case NOBALANCE:
+            fprintf(stdout, "--- TERMINE SIMULAZIONE ---\nCausa terminazione: il bilancio dei processi non"
+                            "è più sufficiente per eseguire alcuna transazione.\n\n");
             break;
         default:
             fprintf(stdout,

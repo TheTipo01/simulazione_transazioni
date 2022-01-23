@@ -53,6 +53,9 @@ struct ProcessoNode {
 
     /* ID della coda di messaggi usata dal processo nodo per ricevere transazioni */
     int msg_id;
+
+    /* Array d'indici dei nodi amici in nodes_pid */
+    int *friends;
 };
 
 /* Struttura per tenere lo stato di un processo user */
@@ -112,6 +115,9 @@ struct SharedMemoryID {
 
     /* Numero di processi in lettura su nodes_pid */
     int nodes_pid_read;
+
+    /* Numero di processi utenti che aspettano un aumento del bilancio */
+    int user_waiting;
 };
 
 /* Struttura dati per contenere la memoria condivisa usata nel programma */
@@ -148,6 +154,16 @@ struct SharedMemory {
 
     /* Numero di processi in lettura su nodes_pid */
     unsigned int *nodes_pid_read;
+
+    /* Numero di processi utenti che aspettano un aumento del bilancio */
+    unsigned int *user_waiting;
+};
+
+struct Messaggio_PID {
+    /* Tipo di messaggio (richiesto dalle message queue) */
+    long m_type;
+
+    int index;
 };
 
 #endif

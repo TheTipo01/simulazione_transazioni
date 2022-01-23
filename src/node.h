@@ -16,4 +16,6 @@ void start_node(unsigned int index);
  */
 struct Transazione generate_reward(double tot_reward);
 
+void enlarge_friends(int sig);
+
 #endif

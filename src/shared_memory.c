@@ -49,6 +49,9 @@ void get_shared_ids() {
     ids.nodes_pid_read = shmget(IPC_PRIVATE, sizeof(unsigned int), GET_FLAGS);
     shmget_error_checking(ids.nodes_pid_read);
 
+    ids.user_waiting = shmget(IPC_PRIVATE, sizeof(unsigned int), GET_FLAGS);
+    shmget_error_checking(ids.user_waiting);
+
     /* Inizializziamo i semafori che usiamo */
     ids.sem = semget(IPC_PRIVATE, NUM_SEMAFORI, GET_FLAGS);
     TEST_ERROR;
@@ -89,6 +92,9 @@ void attach_shared_memory() {
     TEST_ERROR;
 
     sh.nodes_pid_read = shmat(ids.nodes_pid_read, NULL, 0);
+    TEST_ERROR;
+
+    sh.user_waiting = shmat(ids.user_waiting, NULL, 0);
     TEST_ERROR;
 }
 

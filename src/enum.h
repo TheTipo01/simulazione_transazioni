@@ -8,6 +8,7 @@ enum semafori {
     MMTS,
     NODES_PID_WRITE,
     NODES_PID_READ,
+    USER_WAITING,
     FINE_SEMAFORI
 };
 
@@ -21,6 +22,7 @@ enum process_status {
 enum termination_reason {
     TIMEDOUT,
     LEDGERFULL,
+    NOBALANCE,
     FINISHED
 };
 #endif
