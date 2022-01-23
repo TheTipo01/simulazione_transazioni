@@ -98,6 +98,11 @@ struct SharedMemoryID {
     /* Numero di processi in lettura su stop */
     int stop_read;
 
+    /* Numero di processi in attesa di un incremento di budget */
+    int user_waiting;
+
+    int node_full;
+
     /* ID dell'array di semafori */
     int sem;
 };
@@ -130,6 +135,11 @@ struct SharedMemory {
 
     /* Numero di processi in lettura su stop */
     unsigned int *stop_read;
+
+    /* Numero di processi in attesa di un incremento di budget */
+    unsigned int *user_waiting;
+
+    unsigned int *node_full;
 };
 
 #endif

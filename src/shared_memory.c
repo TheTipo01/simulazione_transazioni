@@ -7,69 +7,59 @@
 #include <sys/sem.h>
 
 void get_shared_ids() {
-    /* Allocazione memoria per il libro mastro */
     ids.ledger = shmget(IPC_PRIVATE, SO_REGISTRY_SIZE * sizeof(struct Blocco), GET_FLAGS);
     shmget_error_checking(ids.ledger);
 
-    /* Allocazione del semaforo di lettura come variabile in memoria condivisa */
     ids.ledger_read = shmget(IPC_PRIVATE, sizeof(unsigned int), GET_FLAGS);
     shmget_error_checking(ids.ledger_read);
 
-    /* Allocazione dell'array dello stato dei nodi */
     ids.nodes_pid = shmget(IPC_PRIVATE, cfg.SO_NODES_NUM * sizeof(struct ProcessoNode), GET_FLAGS);
     shmget_error_checking(ids.nodes_pid);
 
-    /* Allocazione dell'array dello stato dei nodi */
     ids.users_pid = shmget(IPC_PRIVATE, cfg.SO_USERS_NUM * sizeof(struct ProcessoUser), GET_FLAGS);
     shmget_error_checking(ids.users_pid);
 
-    /* Allocazione del flag per far terminare correttamente i processi */
     ids.stop = shmget(IPC_PRIVATE, sizeof(int), GET_FLAGS);
     shmget_error_checking(ids.stop);
 
-    /* Allocazione del puntatore al primo blocco libero del libro mastro */
     ids.ledger_free_block = shmget(IPC_PRIVATE, sizeof(int), GET_FLAGS);
     shmget_error_checking(ids.ledger_free_block);
 
-    /* Allocazione del puntatore al primo blocco libero del libro mastro */
     ids.stop_read = shmget(IPC_PRIVATE, sizeof(unsigned int), GET_FLAGS);
     shmget_error_checking(ids.stop_read);
 
-    /* Allocazione del segmento dedicato alle transazioni effettuate via CLI */
     ids.mmts = shmget(IPC_PRIVATE, 10 * sizeof(struct Transazione), GET_FLAGS);
     shmget_error_checking(ids.mmts);
 
-    /* Allocazione del puntatore al primo spazio libero nell'array delle transazioni man-made */
     ids.mmts_free_block = shmget(IPC_PRIVATE, sizeof(int), GET_FLAGS);
     shmget_error_checking(ids.mmts_free_block);
 
-    /* Inizializziamo i semafori che usiamo */
+    ids.user_waiting = shmget(IPC_PRIVATE, sizeof(unsigned int), GET_FLAGS);
+    shmget_error_checking(ids.user_waiting);
+
+    ids.node_full = shmget(IPC_PRIVATE, sizeof(unsigned int), GET_FLAGS);
+    shmget_error_checking(ids.user_waiting);
+
     ids.sem = semget(IPC_PRIVATE, NUM_SEMAFORI, GET_FLAGS);
     TEST_ERROR;
 }
 
 void attach_shared_memory() {
-    /* Collegamento del libro mastro (ci serve per controllo dati) */
     sh.ledger = shmat(ids.ledger, NULL, 0);
     TEST_ERROR;
 
-    /* Inizializziamo il semaforo di lettura a 0 */
     sh.ledger_read = shmat(ids.ledger_read, NULL, 0);
     TEST_ERROR;
 
-    /* Collegamento all'array dello stato dei processi */
     sh.nodes_pid = shmat(ids.nodes_pid, NULL, 0);
     TEST_ERROR;
 
-    /* Collegamento all'array dello stato dei processi utente */
     sh.users_pid = shmat(ids.users_pid, NULL, 0);
     TEST_ERROR;
 
-    /* Inizializziamo il flag di terminazione a -1 (verrà abbassato quando tutti i processi devono terminare) */
     sh.stop = shmat(ids.stop, NULL, 0);
     TEST_ERROR;
 
-    /* Puntatore al primo blocco disponibile per la scrittura nel ledger */
     sh.ledger_free_block = shmat(ids.ledger_free_block, NULL, 0);
     TEST_ERROR;
 
@@ -80,6 +70,12 @@ void attach_shared_memory() {
     TEST_ERROR;
 
     sh.mmts_free_block = shmat(ids.mmts_free_block, NULL, 0);
+    TEST_ERROR;
+
+    sh.user_waiting = shmat(ids.user_waiting, NULL, 0);
+    TEST_ERROR;
+
+    sh.node_full = shmat(ids.node_full, NULL, 0);
     TEST_ERROR;
 }
 

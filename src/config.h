@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 /* Numero di transazioni contenute in un blocco */
-#define SO_BLOCK_SIZE 100
+#define SO_BLOCK_SIZE 10
 
 /* Numero massimo di blocchi nel libro mastro */
 #define SO_REGISTRY_SIZE 1000
@@ -27,8 +27,10 @@ typedef struct Config {
     /* Numero massimo di transazioni nella transaction pool dei processi nodo */
     int SO_TP_SIZE;
 
-    /* Minimo e massimo valore del tempo simulato (espresso in nanosecondi) di
-    processamento di un blocco da parte di un nodo */
+    /*
+     * Minimo e massimo valore del tempo simulato (espresso in nanosecondi) di
+     * processamento di un blocco da parte di un nodo
+     */
     long SO_MIN_TRANS_PROC_NSEC, SO_MAX_TRANS_PROC_NSEC;
 
     /* Budget iniziale di ciascun processo utente */
@@ -36,17 +38,11 @@ typedef struct Config {
 
     /* Durata massima della simulazione (espressa in secondi) */
     int SO_SIM_SEC;
-
-    /* Numero di nodi amici dei processi nodo */
-    int SO_NUM_FRIENDS;
-
-    /* Numero massimo di inoltri di una transazione verso nodi amici prima che il master crei un nuovo nodo */
-    int SO_HOPS;
 } Config;
 
 Config new_config();
 
-/* Funzione utile per error-checking nella fase di inizializzazione delle variabili d'ambiente */
+/* Funzione utile per error-checking nella fase d'inizializzazione delle variabili d'ambiente */
 char *get_env(const char *name);
 
 #endif

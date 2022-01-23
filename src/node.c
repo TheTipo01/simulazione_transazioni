@@ -97,8 +97,7 @@ void start_node(unsigned int index) {
          */
         if (last != cfg.SO_TP_SIZE) {
             /* Simulazione elaborazione del blocco */
-            sleeping(random() % (cfg.SO_MAX_TRANS_PROC_NSEC + 1 - cfg.SO_MIN_TRANS_PROC_NSEC) +
-                     cfg.SO_MIN_TRANS_PROC_NSEC);
+            sleeping(random_between_two(cfg.SO_MIN_TRANS_PROC_NSEC, cfg.SO_MAX_TRANS_PROC_NSEC));
 
             /* Ci riserviamo un blocco nel libro mastro aumentando il puntatore dei blocchi liberi */
             sem_reserve(ids.sem, LEDGER_WRITE);
@@ -127,6 +126,16 @@ void start_node(unsigned int index) {
             /* Se la TP è piena, chiudiamo la coda di messaggi, in modo che il nodo non possa più accettare transazioni. */
             msgctl(sh.nodes_pid[node_position].msg_id, IPC_RMID, NULL);
             sh.nodes_pid[node_position].status = PROCESS_WAITING;
+
+            sem_reserve(ids.sem, NODE_FULL);
+            *sh.node_full += 1;
+            if (*sh.user_waiting == cfg.SO_USERS_NUM) {
+                sem_reserve(ids.sem, STOP_WRITE);
+                *sh.stop = ALLTPFULL;
+                sem_release(ids.sem, STOP_WRITE);
+                kill(0, SIGUSR1);
+            }
+            sem_release(ids.sem, NODE_FULL);
         }
     }
 

@@ -110,11 +110,13 @@ int main(int argc, char *argv[]) {
         /* Blocchiamo anche nel fork i segnali usati dai processi user/node */
         sigprocmask(SIG_SETMASK, &wset, NULL);
 
+        /* Simulazione del passaggio del tempo e stampa dello stato */
         do {
             print_more_status(sh.nodes_pid, sh.users_pid);
             exec_time++;
         } while (exec_time < cfg.SO_SIM_SEC && !sleeping(1000000000) && get_stop_value(sh.stop, sh.stop_read) == -1);
 
+        /* Se finisce il tempo, si alza il semaforo di stop */
         if (exec_time == cfg.SO_SIM_SEC) {
             sem_reserve(ids.sem, STOP_WRITE);
             *sh.stop = TIMEDOUT;
@@ -148,6 +150,14 @@ int main(int argc, char *argv[]) {
         case TIMEDOUT:
             fprintf(stdout, "--- TERMINE SIMULAZIONE ---\nCausa terminazione: sono passati %d secondi.\n\n",
                     cfg.SO_SIM_SEC);
+            break;
+        case NOBALANCE:
+            fprintf(stdout, "--- TERMINE SIMULAZIONE ---\nCausa terminazione: i processi non hanno abbastanza "
+                            "bilancio per eseguire transazioni.\n\n");
+            break;
+        case ALLTPFULL:
+            fprintf(stdout, "--- TERMINE SIMULAZIONE ---\nCausa terminazione: tutte le transaction pool "
+                            "sono piene.\n\n");
             break;
         default:
             fprintf(stdout,

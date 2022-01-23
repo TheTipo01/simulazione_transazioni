@@ -63,12 +63,7 @@ void transaction_generator(int sig) {
     else
         msg.transazione.reward = cfg.SO_REWARD;
 
-    msg.transazione.quantity = random() % (cfg.SO_BUDGET_INIT + 1 - 2) + 2;
-
-    /* Se abbiamo generato una quantità superiore al bilancio, prendiamo il rimanente del bilancio */
-    if (msg.transazione.quantity > sh.users_pid[user_position].balance) {
-        msg.transazione.quantity = sh.users_pid[user_position].balance - 2;
-    }
+    msg.transazione.quantity = (double) random_between_two(2, (long) sh.users_pid[user_position].balance);
 
     msg.m_type = 1;
 
@@ -140,19 +135,46 @@ void start_user(unsigned int index) {
             /* ...viene generata la transazione. */
             transaction_generator(0);
 
-            sleeping(random() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
-                     cfg.SO_MIN_TRANS_GEN_NSEC);
+            sleeping(random_between_two(cfg.SO_MIN_TRANS_GEN_NSEC, cfg.SO_MAX_TRANS_GEN_NSEC));
         } else {
-            sleeping(random() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
-                     cfg.SO_MIN_TRANS_GEN_NSEC);
+            sleeping(random_between_two(cfg.SO_MIN_TRANS_GEN_NSEC, cfg.SO_MAX_TRANS_GEN_NSEC));
 
             /* Se non c'è abbastanza bilancio, aspettiamo finchè l'utente non riceve una transazione */
             sh.users_pid[user_position].status = PROCESS_WAITING;
-            sigwait(&wset, &sig);
+
+            sem_reserve(ids.sem, USER_WAITING);
+            *sh.user_waiting += 1;
+
+            /* Se tutti i processi stanno aspettando, possiamo terminare la simulazione */
+            if (*sh.user_waiting == cfg.SO_USERS_NUM) {
+                sem_release(ids.sem, USER_WAITING);
+
+                sem_reserve(ids.sem, STOP_WRITE);
+                *sh.stop = NOBALANCE;
+                sem_release(ids.sem, STOP_WRITE);
+                kill(0, SIGUSR1);
+            } else {
+                sem_release(ids.sem, USER_WAITING);
+
+                sigwait(&wset, &sig);
+
+                sem_reserve(ids.sem, USER_WAITING);
+                *sh.user_waiting -= 1;
+                sem_release(ids.sem, USER_WAITING);
+            }
         }
     }
 
     /* Cleanup prima di uscire */
+
+    /* Aumento del contatore dei processi in waiting/uscita */
+    sem_reserve(ids.sem, USER_WAITING);
+    *sh.user_waiting += 1;
+    if (*sh.user_waiting == cfg.SO_USERS_NUM) {
+        /* Sblocchiamo i processi in waiting */
+        kill(0, SIGUSR1);
+    }
+    sem_release(ids.sem, USER_WAITING);
 
     /* Set dello status basandoci sulla quantità di transazioni fallite */
     if (failed_transaction_user != cfg.SO_RETRY)

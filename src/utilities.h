@@ -23,6 +23,7 @@
         } \
         } while(0)
 
+/* Macro per controllare in modo "pulito" l'errore presente in errno. */
 #define TEST_ERROR do \
         {                      \
         if (errno)    \
@@ -31,7 +32,13 @@
         } \
         } while (0)
 
+/*
+ * Macro che permette di eseguire una pulizia dell'output nella console. Utilizzata nella print_status/print_more_status
+ * per visualizzare in modo pulito e contiguo l'output della simulazione.
+ */
 #define clrscr() printf("\033[1;1H\033[2J")
+
+/* Macro che definisce la grandezza dei messaggi inviati con msgsnd. */
 #define msg_size() sizeof(struct Messaggio) - sizeof(long)
 
 /*
@@ -68,5 +75,8 @@ char *format_time(time_t rawtime);
 /* Funzione utile ad ottenere una stringa appropriata per lo stato del processo osservato. Utilizzata principalmente
  * per la visualizzazione, nella funzione print_status e print_more_status. */
 char *get_status(int status);
+
+/* Funzione che ritorna un numero casuale in un range definito. */
+long random_between_two(long min, long max);
 
 #endif

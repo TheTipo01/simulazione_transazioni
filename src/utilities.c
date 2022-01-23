@@ -84,7 +84,8 @@ void print_status() {
         }
     }
     fprintf(stdout, "Numero di processi nodo attivi: %d\n", active_nodes);
-    fprintf(stdout, "Processo nodo con bilancio più alto: #%d, status = %s, balance = %.2f\n", max_pid, max_stat, max_bal);
+    fprintf(stdout, "Processo nodo con bilancio più alto: #%d, status = %s, balance = %.2f\n", max_pid, max_stat,
+            max_bal);
     fprintf(stdout, "Processo nodo con bilancio più basso: #%d, status = %s, balance = %.2f\n\n", min_pid, min_stat,
             min_bal);
 }
@@ -226,5 +227,8 @@ int sleeping(long waiting_time) {
     return nanosleep(&requested_time, NULL);
 }
 
+long random_between_two(long min, long max) {
+    return random() % (max - min + 1) + min;
+}
 
 #endif
