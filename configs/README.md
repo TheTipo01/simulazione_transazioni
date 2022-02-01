@@ -3,6 +3,9 @@
 In questa cartella sono presenti alcuni script che eseguono il programma con dei valori di configurazione di esempio
 estrapolate dalla documentazione ufficiale del Progetto (versione 19/12/2021).
 
+I parametri `SO_BLOCK_SIZE` e `SO_REGISTRY_SIZE` sono definiti a compile time nel file [config.h](../src/config.h), e di
+conseguenza da modificare a mano
+
 | parametro              | conf #1     | conf #2  | conf #3  |
 |------------------------|-------------|----------|----------|
 | SO_USERS_NUM           | 100         | 1000     | 20       |
