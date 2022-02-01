@@ -14,8 +14,9 @@ void start_node(unsigned int index);
  * Funzione incaricata di generare l'ultima transazione di un blocco, quella contente il reward per il nodo che ha
  * elaborato le transazioni.
  */
-struct Transazione generate_reward(double tot_reward);
+struct Transazione generate_reward(unsigned int tot_reward);
 
+/* Funzione incaricata di aggiungere un nodo alla lista dei nodi amici */
 void enlarge_friends(int sig);
 
 #endif

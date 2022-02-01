@@ -41,15 +41,6 @@
 void shmget_error_checking(int id);
 
 /*
- * Funzione minimale per stampare lo stato dei processi. Vengono stampati:
- *      N° di processi utente attivi
- *      N° di processi nodo attivi
- *      Processo utente/nodo con bilancio più alto
- *      Processo utente/nodo con bilancio più basso
- */
-void print_status();
-
-/*
  * Funzione alternativa più completa per visualizzare lo stato dei processi. Vengono stampati:
  *      N° di processi utente attivi
  *      N° di processi nodo attivi

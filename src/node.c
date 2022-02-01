@@ -20,7 +20,7 @@
 unsigned int node_position;
 struct Transazione *transaction_pool;
 
-struct Transazione generate_reward(double tot_reward) {
+struct Transazione generate_reward(unsigned int tot_reward) {
     struct Transazione reward_tran;
 
     /* Generazione transazione di reward */
@@ -34,9 +34,9 @@ struct Transazione generate_reward(double tot_reward) {
 }
 
 void start_node(unsigned int index) {
-    int sig, i, last = 0, block_pointer, target_node;
+    int sig, i, block_pointer, target_node;
     long tempval;
-    double block_reward;
+    unsigned int block_reward;
     struct Messaggio t_rcv;
     struct sigaction sa;
     sigset_t wset;
@@ -72,7 +72,7 @@ void start_node(unsigned int index) {
 
         /* Ciclo che riceve SO_BLOCK_SIZE-1 transazioni */
         do {
-            if (last != cfg.SO_TP_SIZE) {
+            if (get_node(node_position).last != cfg.SO_TP_SIZE) {
                 /* Ricezione di un messaggio di tipo 1 (transazione da utente) usando coda di messaggi + error checking */
                 msgrcv(get_node(node_position).msg_id, &t_rcv, msg_size(), 1, 0);
                 if (errno) {
@@ -91,29 +91,29 @@ void start_node(unsigned int index) {
                     msgsnd(get_node(get_node(node_position).friends[target_node]).msg_id, &t_rcv, msg_size(), 0);
                 } else {
                     /* Scrittura nella TP della transazione ricevuta e assegnazione del reward */
-                    transaction_pool[last].quantity =
-                            t_rcv.transazione.quantity * ((100.0 - t_rcv.transazione.reward) / 100);
-                    transaction_pool[last].reward = t_rcv.transazione.reward;
-                    transaction_pool[last].sender = t_rcv.transazione.sender;
-                    transaction_pool[last].receiver = t_rcv.transazione.receiver;
-                    transaction_pool[last].timestamp = t_rcv.transazione.timestamp;
+                    transaction_pool[get_node(node_position).last].quantity =
+                            t_rcv.transazione.quantity * ((100 - t_rcv.transazione.reward) / 100.0);
+                    transaction_pool[get_node(node_position).last].reward = t_rcv.transazione.reward;
+                    transaction_pool[get_node(node_position).last].sender = t_rcv.transazione.sender;
+                    transaction_pool[get_node(node_position).last].receiver = t_rcv.transazione.receiver;
+                    transaction_pool[get_node(node_position).last].timestamp = t_rcv.transazione.timestamp;
                     block_reward += t_rcv.transazione.quantity * (t_rcv.transazione.reward / 100.0);
 
                     check_for_update();
                     sh.nodes_pid[node_position].balance +=
                             t_rcv.transazione.quantity * (t_rcv.transazione.reward / 100.0);
-                    sh.nodes_pid[node_position].transactions++;
 
-                    last++;
+                    sh.nodes_pid[node_position].last++;
                 }
             }
-        } while ((last % (SO_BLOCK_SIZE - 1)) != 0 && last != cfg.SO_TP_SIZE);
+        } while ((get_node(node_position).last % (SO_BLOCK_SIZE - 1)) != 0 &&
+                 get_node(node_position).last != cfg.SO_TP_SIZE);
 
         /*
          * Passo successivo: creazione del blocco avente SO_BLOCK_SIZE-1 transazioni presenti nella TP.
          * Se però la TP è piena, la transazione viene scartata: si avvisa il sender
          */
-        if (last != cfg.SO_TP_SIZE) {
+        if (get_node(node_position).last != cfg.SO_TP_SIZE) {
             /* Simulazione elaborazione del blocco */
             sleeping(random() % (cfg.SO_MAX_TRANS_PROC_NSEC + 1 - cfg.SO_MIN_TRANS_PROC_NSEC) +
                      cfg.SO_MIN_TRANS_PROC_NSEC);
@@ -121,38 +121,44 @@ void start_node(unsigned int index) {
             /* Ci riserviamo un blocco nel libro mastro aumentando il puntatore dei blocchi liberi */
             sem_reserve(ids.sem, LEDGER_WRITE);
 
-            fprintf(stderr, "%d - %d\n", *sh.ledger_free_block, getpid());
-
             /* Ledger pieno: usciamo */
             if (*sh.ledger_free_block == SO_REGISTRY_SIZE) {
+                sem_release(ids.sem, LEDGER_WRITE);
+
                 sem_reserve(ids.sem, STOP_WRITE);
                 *sh.stop = LEDGERFULL;
                 sem_release(ids.sem, STOP_WRITE);
             } else {
                 *sh.ledger_free_block += 1;
                 block_pointer = *sh.ledger_free_block;
+                sem_release(ids.sem, LEDGER_WRITE);
 
                 /* Scriviamo i primi SO_BLOCK_SIZE-1 blocchi nel libro mastro */
-                for (i = last - (SO_BLOCK_SIZE - 1); i < last; i++) {
+                for (i = get_node(node_position).last - (SO_BLOCK_SIZE - 1);
+                     i < get_node(node_position).last; i++) {
                     sh.ledger[block_pointer].transazioni[i] = transaction_pool[i];
                 }
                 sh.ledger[block_pointer].transazioni[i + 1] = generate_reward(block_reward);
+
+                /* Sottraiamo SO_BLOCK_SIZE - 1 al puntatore all'ultimo elemento libero della TP, in modo da "rimuovere"
+                 * il blocco estratto dalla TP (si andrà a sovrascrivere sulle transazioni già scritte sul libro mastro)*/
+                sh.nodes_pid[node_position].last -= (SO_BLOCK_SIZE - 1);
             }
 
-            sem_release(ids.sem, LEDGER_WRITE);
-
-            /* Notifichiamo il processo dell'arrivo di una transazione */
-            kill(t_rcv.transazione.receiver, SIGUSR1);
         } else {
-            /* Se la TP è piena, chiudiamo la coda di messaggi, in modo che il nodo non possa più accettare transazioni. */
             check_for_update();
-            sem_reserve(ids.sem, NODES_PID_WRITE);
-            sh.nodes_pid[node_position].status = PROCESS_WAITING;
-            sem_release(ids.sem, NODES_PID_WRITE);
 
             /* Ogni nuova transazione verrà inoltrata ad altri nodi scelti casualmente */
-            fprintf(stderr, "node aspetta\n");
             msgrcv(get_node(node_position).msg_id, &t_rcv, msg_size(), 1, 0);
+            if (errno) {
+                if (get_stop_value() != -1) {
+                    goto cleanup;
+                } else {
+                    fprintf(stderr, "%s:%d: PID=%5d: Error %d (%s)\n", __FILE__, __LINE__, getpid(), errno,
+                            strerror(errno));
+                }
+            }
+
             if (t_rcv.hops == cfg.SO_HOPS) {
                 msgsnd(ids.master_msg_id, &t_rcv, msg_size(), 0);
             } else {

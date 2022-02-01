@@ -17,9 +17,9 @@
 int last_block_checked_user = 0, failed_transaction_user = 0;
 unsigned int user_position;
 
-double calc_entrate(int sem_id, struct Blocco *lm, unsigned int *read_counter) {
+unsigned int calc_entrate(int sem_id, struct Blocco *lm, unsigned int *read_counter) {
     int pid = getpid(), j;
-    double tmp_balance = 0;
+    unsigned int tmp_balance = 0;
 
     /* Dobbiamo eseguire una lettura del libro mastro, quindi impostiamo il
      * semaforo di lettura */
@@ -47,7 +47,6 @@ double calc_entrate(int sem_id, struct Blocco *lm, unsigned int *read_counter) {
 
 void transaction_generator(int sig) {
     struct Messaggio msg;
-    int feedback;
     long receiver, target_node;
 
     /* Puntatore al mittente e destinatario scelto casualmente (il PID verrà preso dalla lista di nodi/utenti a cui
@@ -65,34 +64,27 @@ void transaction_generator(int sig) {
     else
         msg.transazione.reward = cfg.SO_REWARD;
 
-    msg.transazione.quantity = (double) random_between_two(2, sh.users_pid[user_position].balance);
+    msg.transazione.quantity = random_between_two(2, sh.users_pid[user_position].balance);
 
     msg.m_type = 1;
     msg.hops = 0;
 
     /* Invio al nodo la transazione */
     check_for_update();
-    feedback = msgsnd(get_node(target_node).msg_id, &msg, msg_size(), 0);
+    msgsnd(get_node(target_node).msg_id, &msg, msg_size(), 0);
 
     sem_reserve(ids.sem, (int) (FINE_SEMAFORI + user_position));
-    if (feedback == -1) {
-        /* Se la transazione fallisce, aumentiamo il contatore delle transazioni
-         * fallite di 1 */
-        failed_transaction_user++;
-    } else {
-        /* Se la transazione ha avuto successo, aggiorniamo il bilancio con
-         * l'uscita appena effettuata */
-        sh.users_pid[user_position].balance -=
-                (unsigned int) (msg.transazione.quantity * ((float) (100 - msg.transazione.reward) / 100.0));
+    /* Aggiorniamo il bilancio del nodo rimuovendo la quantità della transazione appena inviata */
+    sh.users_pid[user_position].balance -=
+            (unsigned int) (msg.transazione.quantity * ((float) (100 - msg.transazione.reward) / 100.0));
 
-        /* Se il segnale ricevuto è SIGUSR2, significa che questa funzione è stata chiamata inviando un segnale ad un processo utente */
-        if (sig == SIGUSR2) {
-            fprintf(stderr, "AO\n");
-            sem_reserve(ids.sem, MMTS);
-            sh.mmts[*sh.mmts_free_block] = msg.transazione;
-            *sh.mmts_free_block += 1;
-            sem_release(ids.sem, MMTS);
-        }
+    /* Se il segnale ricevuto è SIGUSR2, significa che questa funzione è stata chiamata inviando un segnale ad un processo utente */
+    if (sig == SIGUSR2) {
+        fprintf(stderr, "AO\n");
+        sem_reserve(ids.sem, MMTS);
+        sh.mmts[*sh.mmts_free_block] = msg.transazione;
+        *sh.mmts_free_block += 1;
+        sem_release(ids.sem, MMTS);
     }
     sem_release(ids.sem, (int) (FINE_SEMAFORI + user_position));
 }
@@ -140,36 +132,16 @@ void start_user(unsigned int index) {
             /* ...viene generata la transazione. */
             transaction_generator(0);
 
-            sleeping(random() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
-                     cfg.SO_MIN_TRANS_GEN_NSEC);
+            /* Dato che l'utente ha inviato la transazione, il contatore delle transazioni fallite consecutive si azzera */
+            failed_transaction_user = 0;
         } else {
-            sleeping(random() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
-                     cfg.SO_MIN_TRANS_GEN_NSEC);
-
-            /* Se non c'è abbastanza bilancio, aspettiamo finchè l'utente non riceve una transazione */
-            sh.users_pid[user_position].status = PROCESS_WAITING;
-
-            sem_reserve(ids.sem, USER_WAITING);
-            *sh.user_waiting += 1;
-
-            /* Se tutti i processi stanno aspettando, possiamo terminare la simulazione */
-            if (*sh.user_waiting == cfg.SO_USERS_NUM) {
-                sem_release(ids.sem, USER_WAITING);
-
-                sem_reserve(ids.sem, STOP_WRITE);
-                *sh.stop = NOBALANCE;
-                sem_release(ids.sem, STOP_WRITE);
-                kill(0, SIGUSR1);
-            } else {
-                sem_release(ids.sem, USER_WAITING);
-
-                sigwait(&wset, &sig);
-
-                sem_reserve(ids.sem, USER_WAITING);
-                *sh.user_waiting -= 1;
-                sem_release(ids.sem, USER_WAITING);
-            }
+            /* Altrimenti, significa che la transazione è fallita */
+            failed_transaction_user++;
         }
+
+        /* Simulazione del passaggio del tempo per la generazione di una transazione */
+        sleeping(random() % (cfg.SO_MAX_TRANS_GEN_NSEC + 1 - cfg.SO_MIN_TRANS_GEN_NSEC) +
+                 cfg.SO_MIN_TRANS_GEN_NSEC);
     }
 
     /* Cleanup prima di uscire */

@@ -34,63 +34,6 @@ char *get_status(int status) {
     }
 }
 
-void print_status() {
-    int i, active_nodes = 0, active_users = 0;
-    pid_t max_pid, min_pid;
-    double max_bal, min_bal;
-    char *max_stat, *min_stat;
-
-    setvbuf(stdout, NULL, _IONBF, 0);
-
-    clrscr();
-
-    max_bal = 0;
-    min_bal = cfg.SO_BUDGET_INIT;
-    for (i = 0; i < cfg.SO_USERS_NUM; i++) {
-        if (sh.users_pid[i].status != PROCESS_FINISHED) {
-            active_users++;
-            if (sh.users_pid[i].balance > max_bal) {
-                max_bal = sh.users_pid[i].balance;
-                max_pid = sh.users_pid[i].pid;
-                max_stat = get_status(sh.users_pid[i].status);
-            }
-            if (sh.users_pid[i].balance < min_bal) {
-                min_bal = sh.users_pid[i].balance;
-                min_pid = sh.users_pid[i].pid;
-                min_stat = get_status(sh.users_pid[i].status);
-            }
-        }
-    }
-    fprintf(stdout, "\nNumero di processi utente attivi: %d\n", active_users);
-    fprintf(stdout, "Processo utente con bilancio più alto: #%d, status = %s, balance = %.2f\n", max_pid, max_stat,
-            max_bal);
-    fprintf(stdout, "Processo utente con bilancio più basso: #%d, status = %s, balance = %.2f\n", min_pid, min_stat,
-            min_bal);
-
-    max_bal = 0;
-    min_bal = cfg.SO_BUDGET_INIT;
-    for (i = 0; i < cfg.SO_NODES_NUM; i++) {
-        if (sh.nodes_pid[i].status != PROCESS_FINISHED) {
-            active_nodes++;
-            if (sh.nodes_pid[i].balance > max_bal) {
-                max_bal = sh.nodes_pid[i].balance;
-                max_pid = sh.nodes_pid[i].pid;
-                max_stat = get_status(sh.nodes_pid[i].status);
-            }
-            if (sh.nodes_pid[i].balance < min_bal) {
-                min_bal = sh.nodes_pid[i].balance;
-                min_pid = sh.nodes_pid[i].pid;
-                min_stat = get_status(sh.nodes_pid[i].status);
-            }
-        }
-    }
-    fprintf(stdout, "Numero di processi nodo attivi: %d\n", active_nodes);
-    fprintf(stdout, "Processo nodo con bilancio più alto: #%d, status = %s, balance = %.2f\n", max_pid, max_stat,
-            max_bal);
-    fprintf(stdout, "Processo nodo con bilancio più basso: #%d, status = %s, balance = %.2f\n\n", min_pid, min_stat,
-            min_bal);
-}
-
 void print_more_status() {
     int i, active_nodes = 0, active_users = 0;
     struct ProcessoNode t3_nodes[3], b3_nodes[3], temp_node;
@@ -188,7 +131,7 @@ void print_more_status() {
         }
     }
 
-#define format "#%-5d %-6.2f %s       #%-5d %-6.2f %s\n"
+#define format "#%-5d %-6d %s       #%-5d %-6d %s\n"
 
     fprintf(stdout, "------------------------------------------------------------\n");
     fprintf(stdout, "Active Users: %d                Active Nodes: %d\n", active_users, active_nodes);
@@ -242,6 +185,8 @@ void expand_node() {
     *sh.new_nodes_pid = shmget(IPC_PRIVATE, (cfg.SO_NODES_NUM + 1) * sizeof(struct ProcessoNode), GET_FLAGS);
     new = shmat(*sh.new_nodes_pid, NULL, 0);
 
+    fprintf(stderr, "we do be expanding\n");
+
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         new[i] = sh.nodes_pid[i];
     }
@@ -255,6 +200,7 @@ void expand_node() {
 
 void check_for_update() {
     if (*sh.new_nodes_pid != ids.nodes_pid) {
+        fprintf(stderr, "we do be checking\n");
         cfg.SO_NODES_NUM++;
         ids.nodes_pid = *sh.new_nodes_pid;
         shmdt_error_checking(sh.nodes_pid);

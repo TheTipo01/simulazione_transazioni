@@ -8,8 +8,10 @@
 
 /* Struttura per tenere informazioni su una singola transazione */
 struct Transazione {
-    /* Timestamp della transazione con risoluzione dei nanosecondi
-        (vedere funzione clock_gettime()) */
+    /*
+     * Timestamp della transazione con risoluzione dei nanosecondi
+     * (vedere funzione clock_gettime())
+    */
     time_t timestamp;
 
     /* L'utente implicito che ha generato la transazione */
@@ -19,7 +21,7 @@ struct Transazione {
     pid_t receiver;
 
     /* Quantità di denaro inviata */
-    double quantity;
+    unsigned int quantity;
 
     /* Denaro pagato dal sender al nodo che processa la transazione */
     unsigned int reward;
@@ -46,16 +48,16 @@ struct ProcessoNode {
     int status;
 
     /* Bilancio del processo */
-    double balance;
-
-    /* Numero di transazioni nella TP */
-    int transactions;
+    unsigned int balance;
 
     /* ID della coda di messaggi usata dal processo nodo per ricevere transazioni */
     int msg_id;
 
     /* Array d'indici dei nodi amici in nodes_pid */
     int *friends;
+
+    /* Puntatore alla transaction pool */
+    unsigned int last;
 };
 
 /* Struttura per tenere lo stato di un processo user */
@@ -67,7 +69,7 @@ struct ProcessoUser {
     int status;
 
     /* Bilancio del processo */
-    double balance;
+    unsigned int balance;
 };
 
 /* Struttura che identifica un singolo blocco nel ledger (libro mastro) */

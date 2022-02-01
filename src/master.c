@@ -84,11 +84,11 @@ int main(int argc, char *argv[]) {
                 sh.nodes_pid[i].pid = current_pid;
                 sh.nodes_pid[i].balance = 0;
                 sh.nodes_pid[i].status = PROCESS_WAITING;
-                sh.nodes_pid[i].transactions = 0;
+                sh.nodes_pid[i].last = 0;
                 sh.nodes_pid[i].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
                 sh.nodes_pid[i].friends = malloc(sizeof(int) * cfg.SO_NUM_FRIENDS);
                 for (j = 0; j < cfg.SO_NUM_FRIENDS; j++) {
-                    sh.nodes_pid[i].friends[j] = random() % cfg.SO_NODES_NUM;
+                    sh.nodes_pid[i].friends[j] = (int) (random() % cfg.SO_NODES_NUM);
                 }
         }
     }
@@ -131,6 +131,8 @@ int main(int argc, char *argv[]) {
 
             sem_reserve(ids.sem, NODES_PID_WRITE);
 
+            fprintf(stderr, "we do be receiving\n");
+
             /* Espansione dell'array nodes_pid e aumento del numero di nodi presenti */
             expand_node();
             cfg.SO_NODES_NUM++;
@@ -149,14 +151,14 @@ int main(int argc, char *argv[]) {
                     sh.nodes_pid[cfg.SO_NODES_NUM - 1].pid = current_pid;
                     sh.nodes_pid[cfg.SO_NODES_NUM - 1].balance = 0;
                     sh.nodes_pid[cfg.SO_NODES_NUM - 1].status = PROCESS_WAITING;
-                    sh.nodes_pid[cfg.SO_NODES_NUM - 1].transactions = 0;
+                    sh.nodes_pid[cfg.SO_NODES_NUM - 1].last = 0;
                     sh.nodes_pid[cfg.SO_NODES_NUM - 1].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
                     sh.nodes_pid[cfg.SO_NODES_NUM - 1].friends = malloc(sizeof(int) * cfg.SO_NUM_FRIENDS);
 
                     for (j = 0; j < cfg.SO_NUM_FRIENDS; j++) {
                         /* Popolazione della lista amici del nuovo nodo */
                         sem_reserve(ids.sem, NODES_PID_WRITE);
-                        sh.nodes_pid[i].friends[j] = random() % cfg.SO_NODES_NUM;
+                        sh.nodes_pid[i].friends[j] = (int) (random() % cfg.SO_NODES_NUM);
                         sem_reserve(ids.sem, NODES_PID_WRITE);
 
                         /* Selezionamento di SO_NUM_FRIENDS nodi a cui deve essere aggiunto il nuovo nodo nella lista amici */
@@ -238,14 +240,14 @@ int main(int argc, char *argv[]) {
     /* Stampa dello stato e del bilancio di ogni processo utente */
     fprintf(stdout, "PROCESSI UTENTE:\n");
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
-        fprintf(stdout, "       #%d, balance = %.2f\n", sh.users_pid[i].pid, sh.users_pid[i].balance);
+        fprintf(stdout, "       #%d, balance = %d\n", sh.users_pid[i].pid, sh.users_pid[i].balance);
     }
     fprintf(stdout, "\n");
 
     /* Stampa del bilancio di ogni processo nodo */
     fprintf(stdout, "PROCESSI NODO:\n");
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
-        fprintf(stdout, "       #%d, balance = %.2f\n", sh.nodes_pid[i].pid, sh.nodes_pid[i].balance);
+        fprintf(stdout, "       #%d, balance = %d\n", sh.nodes_pid[i].pid, sh.nodes_pid[i].balance);
     }
     fprintf(stdout, "\n");
 
@@ -262,20 +264,21 @@ int main(int argc, char *argv[]) {
     /* Stampa del numero di transazioni nella TP di ogni nodo */
     fprintf(stdout, "Numero di transazioni presenti nella TP di ogni processo nodo:\n");
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
-        fprintf(stdout, "       #%d, transactions = %d\n", sh.nodes_pid[i].pid, sh.nodes_pid[i].transactions);
+        fprintf(stdout, "       #%d, transactions = %d\n", sh.nodes_pid[i].pid, sh.nodes_pid[i].last);
     }
 
     /* Se sono state fatte transazioni tramite CLI, vengono riportate qui. */
     if (sh.mmts[0].timestamp != 0) {
         fprintf(stdout, "\nMan-Made Transactions:\n");
         for (i = 0; i < 10 && sh.mmts[i].timestamp != 0; i++) {
-            fprintf(stdout, "       #%d -> #%d, %.2f$, date: %s\n\n",
+            fprintf(stdout, "       #%d -> #%d, %d$, date: %s\n\n",
                     sh.mmts[i].sender, sh.mmts[i].receiver, sh.mmts[i].quantity, format_time(sh.mmts[i].timestamp));
         }
     }
 
     /* Cleanup finale */
     detach_and_delete();
+    delete_message_queue();
 
     return 0;
 }

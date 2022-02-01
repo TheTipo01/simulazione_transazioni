@@ -106,8 +106,10 @@ void detach_and_delete() {
     shmdt_error_checking(sh.stop);
     shmdt_error_checking(sh.ledger_free_block);
     shmdt_error_checking(sh.stop_read);
+    shmdt_error_checking(sh.mmts);
     shmdt_error_checking(sh.new_nodes_pid);
     shmdt_error_checking(sh.nodes_pid_read);
+    shmdt_error_checking(sh.user_waiting);
 
     semctl(ids.sem, 0, IPC_RMID);
     shmctl(ids.nodes_pid, IPC_RMID, NULL);
@@ -116,12 +118,20 @@ void detach_and_delete() {
     shmctl(ids.stop, IPC_RMID, NULL);
     shmctl(ids.ledger_free_block, IPC_RMID, NULL);
     shmctl(ids.stop_read, IPC_RMID, NULL);
+    shmctl(ids.mmts, IPC_RMID, NULL);
+    shmctl(ids.new_nodes_pid, IPC_RMID, NULL);
+    shmctl(ids.nodes_pid_read, IPC_RMID, NULL);
+    shmctl(ids.user_waiting, IPC_RMID, NULL);
 }
 
 void delete_message_queue() {
     int i;
 
+    check_for_update();
+
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         msgctl(sh.nodes_pid[i].msg_id, IPC_RMID, NULL);
     }
+
+    msgctl(ids.master_msg_id, IPC_RMID, NULL);
 }
