@@ -53,11 +53,11 @@ struct ProcessoNode {
     /* ID della coda di messaggi usata dal processo nodo per ricevere transazioni */
     int msg_id;
 
-    /* Array d'indici dei nodi amici in nodes_pid */
-    int *friends;
-
     /* Puntatore alla transaction pool */
     unsigned int last;
+
+    /* ID della shared memory in cui è presente l'array degli amici */
+    int friends;
 };
 
 /* Struttura per tenere lo stato di un processo user */

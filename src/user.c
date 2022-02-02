@@ -70,7 +70,6 @@ void transaction_generator(int sig) {
     msg.hops = 0;
 
     /* Invio al nodo la transazione */
-    check_for_update();
     msgsnd(get_node(target_node).msg_id, &msg, msg_size(), 0);
 
     sem_reserve(ids.sem, (int) (FINE_SEMAFORI + user_position));

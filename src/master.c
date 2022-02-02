@@ -34,7 +34,7 @@ struct SharedMemoryID ids;
 
 int main(int argc, char *argv[]) {
     unsigned int exec_time = 0;
-    int i, j, cont, current_pid, status;
+    int i, j, cont, current_pid, status, rnd_friend, *friend;
     struct Messaggio temp_tran;
     struct Messaggio_PID temp_pid;
     sigset_t wset;
@@ -86,10 +86,13 @@ int main(int argc, char *argv[]) {
                 sh.nodes_pid[i].status = PROCESS_WAITING;
                 sh.nodes_pid[i].last = 0;
                 sh.nodes_pid[i].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
-                sh.nodes_pid[i].friends = malloc(sizeof(int) * cfg.SO_NUM_FRIENDS);
+                sh.nodes_pid[i].friends = shmget(IPC_PRIVATE, sizeof(int) * cfg.SO_NUM_FRIENDS, GET_FLAGS);
+                friend = shmat(sh.nodes_pid[i].friends, NULL, 0);
                 for (j = 0; j < cfg.SO_NUM_FRIENDS; j++) {
-                    sh.nodes_pid[i].friends[j] = (int) (random() % cfg.SO_NODES_NUM);
+                    friend[j] = (int) (random() % cfg.SO_NODES_NUM);
                 }
+
+                shmdt_error_checking(friend);
         }
     }
 
@@ -116,7 +119,6 @@ int main(int argc, char *argv[]) {
         /* Blocchiamo anche nel fork i segnali usati dai processi user/node */
         sigprocmask(SIG_SETMASK, &wset, NULL);
 
-
         while (get_stop_value() == -1) {
             /* Ricezione della transazione che ha fatto SO_HOPS salti */
             msgrcv(ids.master_msg_id, &temp_tran, msg_size(), 1, 0);
@@ -129,9 +131,9 @@ int main(int argc, char *argv[]) {
                 }
             }
 
-            sem_reserve(ids.sem, NODES_PID_WRITE);
-
             fprintf(stderr, "we do be receiving\n");
+
+            sem_reserve(ids.sem, NODES_PID_WRITE);
 
             /* Espansione dell'array nodes_pid e aumento del numero di nodi presenti */
             expand_node();
@@ -153,12 +155,14 @@ int main(int argc, char *argv[]) {
                     sh.nodes_pid[cfg.SO_NODES_NUM - 1].status = PROCESS_WAITING;
                     sh.nodes_pid[cfg.SO_NODES_NUM - 1].last = 0;
                     sh.nodes_pid[cfg.SO_NODES_NUM - 1].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
-                    sh.nodes_pid[cfg.SO_NODES_NUM - 1].friends = malloc(sizeof(int) * cfg.SO_NUM_FRIENDS);
+                    sh.nodes_pid[cfg.SO_NODES_NUM - 1].friends = shmget(IPC_PRIVATE, sizeof(int) * cfg.SO_NUM_FRIENDS,
+                                                                        GET_FLAGS);
+                    friend = shmat(sh.nodes_pid[cfg.SO_NODES_NUM - 1].friends, NULL, 0);
 
                     for (j = 0; j < cfg.SO_NUM_FRIENDS; j++) {
                         /* Popolazione della lista amici del nuovo nodo */
                         sem_reserve(ids.sem, NODES_PID_WRITE);
-                        sh.nodes_pid[i].friends[j] = (int) (random() % cfg.SO_NODES_NUM);
+                        friend[j] = (int) (random() % cfg.SO_NODES_NUM);
                         sem_reserve(ids.sem, NODES_PID_WRITE);
 
                         /* Selezionamento di SO_NUM_FRIENDS nodi a cui deve essere aggiunto il nuovo nodo nella lista amici */
