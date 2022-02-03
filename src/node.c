@@ -36,11 +36,12 @@ struct Transazione generate_reward(unsigned int tot_reward) {
 }
 
 void start_node(unsigned int index) {
-    int sig, i, block_pointer, target_node, *node_friends_tmp, msg_id = 0;
+    int sig, i, j, block_pointer, target_node, *node_friends_tmp, msg_id = 0;
     long tempval;
     unsigned int block_reward;
     struct Messaggio t_rcv;
     struct sigaction sa;
+    struct Blocco block_to_process;
     sigset_t wset;
 
     /* Seeding di rand con il tempo attuale */
@@ -78,103 +79,59 @@ void start_node(unsigned int index) {
     shmdt_error_checking(node_friends_tmp);
     shmctl(sh.nodes_pid[node_position].friends, IPC_RMID, NULL);
 
-
     while (get_stop_value() == -1) {
-        /* Variabile per tenere conto del reward ottenuto dal nodo per ogni blocco processato*/
         block_reward = 0;
+        while (msgrcv(get_node(node_position).msg_id, &t_rcv, msg_size(), 1, IPC_NOWAIT) != -1 &&
+               get_node(node_position).last < cfg.SO_TP_SIZE) {
 
-        /* Ciclo che riceve SO_BLOCK_SIZE-1 transazioni */
-        do {
-            if (get_node(node_position).last < cfg.SO_TP_SIZE) {
-                /* Ricezione di un messaggio di tipo 1 (transazione da utente) usando coda di messaggi + error checking */
-                msgrcv(get_node(node_position).msg_id, &t_rcv, msg_size(), 1, 0);
-                if (errno) {
-                    if (get_stop_value() != -1) {
-                        goto cleanup;
-                    } else {
-                        fprintf(stderr, "%s:%d: PID=%5d: Error %d (%s)\n", __FILE__, __LINE__, getpid(), errno,
-                                strerror(errno));
-                    }
-                }
-
-                tempval = random_between_two(1, 10);
-                if (tempval == 1) {
-                    check_for_update();
-                    target_node = (int) random_between_two(0, cfg.SO_NUM_FRIENDS);
-                    msg_id = get_node(node_friends[target_node]).msg_id;
-                    msgsnd(msg_id, &t_rcv, msg_size(), 0);
-                } else {
-                    /* Scrittura nella TP della transazione ricevuta e assegnazione del reward */
-                    transaction_pool[get_node(node_position).last].quantity =
-                            t_rcv.transazione.quantity * ((100 - t_rcv.transazione.reward) / 100.0);
-                    transaction_pool[get_node(node_position).last].reward = t_rcv.transazione.reward;
-                    transaction_pool[get_node(node_position).last].sender = t_rcv.transazione.sender;
-                    transaction_pool[get_node(node_position).last].receiver = t_rcv.transazione.receiver;
-                    transaction_pool[get_node(node_position).last].timestamp = t_rcv.transazione.timestamp;
-                    block_reward += t_rcv.transazione.quantity * (t_rcv.transazione.reward / 100.0);
-
-                    check_for_update();
-                    sem_reserve(ids.sem, NODES_PID_WRITE);
-                    sh.nodes_pid[node_position].balance +=
-                            t_rcv.transazione.quantity * (t_rcv.transazione.reward / 100.0);
-
-                    sh.nodes_pid[node_position].last++;
-                    sem_release(ids.sem, NODES_PID_WRITE);
-                }
-            }
-            /*fprintf(stderr, "last in=%d\n", get_node(node_position).last);*/
-        } while (((get_node(node_position).last % (SO_BLOCK_SIZE - 1)) != 0 &&
-                  get_node(node_position).last < cfg.SO_TP_SIZE) ||
-                 get_node(node_position).last == 0);
-
-        /*
-         * Passo successivo: creazione del blocco avente SO_BLOCK_SIZE-1 transazioni presenti nella TP.
-         * Se però la TP è piena, la transazione viene scartata: si avvisa il sender
-         */
-        if (get_node(node_position).last < cfg.SO_TP_SIZE) {
-            /* Simulazione elaborazione del blocco */
-            sleeping(random() % (cfg.SO_MAX_TRANS_PROC_NSEC + 1 - cfg.SO_MIN_TRANS_PROC_NSEC) +
-                     cfg.SO_MIN_TRANS_PROC_NSEC);
-
-            /* Ci riserviamo un blocco nel libro mastro aumentando il puntatore dei blocchi liberi */
-            sem_reserve(ids.sem, LEDGER_WRITE);
-
-            /* Ledger pieno: usciamo */
-            if (*sh.ledger_free_block == SO_REGISTRY_SIZE) {
-                sem_release(ids.sem, LEDGER_WRITE);
-
-                sem_reserve(ids.sem, STOP_WRITE);
-                *sh.stop = LEDGERFULL;
-                sem_release(ids.sem, STOP_WRITE);
+            /* RNG: Una transazione su dieci viene inviata a un altro nodo */
+            tempval = random_between_two(1, 10);
+            if (tempval == 1) {
+                check_for_update();
+                target_node = (int) random_between_two(0, cfg.SO_NUM_FRIENDS);
+                msg_id = get_node(node_friends[target_node]).msg_id;
+                msgsnd(msg_id, &t_rcv, msg_size(), 0);
             } else {
-                *sh.ledger_free_block += 1;
-                block_pointer = *sh.ledger_free_block;
+                /* Scrittura nella TP della transazione ricevuta e assegnazione del reward */
+                transaction_pool[get_node(node_position).last].quantity =
+                        t_rcv.transazione.quantity * ((100 - t_rcv.transazione.reward) / 100.0);
+                transaction_pool[get_node(node_position).last].reward = t_rcv.transazione.reward;
+                transaction_pool[get_node(node_position).last].sender = t_rcv.transazione.sender;
+                transaction_pool[get_node(node_position).last].receiver = t_rcv.transazione.receiver;
+                transaction_pool[get_node(node_position).last].timestamp = t_rcv.transazione.timestamp;
+                block_reward += t_rcv.transazione.quantity * (t_rcv.transazione.reward / 100.0);
 
-                /* Scriviamo i primi SO_BLOCK_SIZE-1 blocchi nel libro mastro */
-                for (i = (int) (get_node(node_position).last - (SO_BLOCK_SIZE - 1));
-                     i < get_node(node_position).last; i++) {
-                    sh.ledger[block_pointer].transazioni[i] = transaction_pool[i];
-                }
-                sh.ledger[block_pointer].transazioni[i + 1] = generate_reward(block_reward);
-                sem_release(ids.sem, LEDGER_WRITE);
-
-
-                /*
-                 * Sottraiamo SO_BLOCK_SIZE - 1 al puntatore all'ultimo elemento libero della TP, in modo da "rimuovere"
-                 * il blocco estratto dalla TP (si andrà a sovrascrivere sulle transazioni già scritte sul libro mastro)
-                 */
+                check_for_update();
                 sem_reserve(ids.sem, NODES_PID_WRITE);
-                sh.nodes_pid[node_position].last -= (SO_BLOCK_SIZE - 1);
+                sh.nodes_pid[node_position].balance +=
+                        t_rcv.transazione.quantity * (t_rcv.transazione.reward / 100.0);
+
+                sh.nodes_pid[node_position].last++;
                 sem_release(ids.sem, NODES_PID_WRITE);
             }
+        }
+        if (errno && errno != ENOMSG) {
+            if (get_stop_value() != -1) {
+                goto cleanup;
+            } else {
+                fprintf(stderr, "%s:%d: PID=%5d: Error %d (%s)\n", __FILE__, __LINE__, getpid(), errno,
+                        strerror(errno));
+            }
+        }
 
-        } else {
-            fprintf(stderr, "oh no our node it's broken\n");
-            check_for_update();
-
-            /* Ogni nuova transazione verrà inoltrata ad altri nodi scelti casualmente */
-            msgrcv(get_node(node_position).msg_id, &t_rcv, msg_size(), 1, 0);
-            if (errno) {
+        /* TP piena: inviamo le transazioni ad altri nodi */
+        if (get_node(node_position).last >= cfg.SO_TP_SIZE) {
+            while (msgrcv(get_node(node_position).msg_id, &t_rcv, msg_size(), 1, IPC_NOWAIT) != -1) {
+                if (t_rcv.hops == cfg.SO_HOPS) {
+                    msgsnd(ids.master_msg_id, &t_rcv, msg_size(), 0);
+                } else {
+                    check_for_update();
+                    target_node = node_friends[random_between_two(0, cfg.SO_NUM_FRIENDS)];
+                    t_rcv.hops++;
+                    msgsnd(get_node(target_node).msg_id, &t_rcv, msg_size(), 0);
+                }
+            }
+            if (errno && errno != ENOMSG) {
                 if (get_stop_value() != -1) {
                     goto cleanup;
                 } else {
@@ -182,14 +139,40 @@ void start_node(unsigned int index) {
                             strerror(errno));
                 }
             }
+        }
 
-            if (t_rcv.hops == cfg.SO_HOPS) {
-                msgsnd(ids.master_msg_id, &t_rcv, msg_size(), 0);
-            } else {
-                check_for_update();
-                target_node = node_friends[random_between_two(0, cfg.SO_NUM_FRIENDS)];
-                t_rcv.hops++;
-                msgsnd(get_node(target_node).msg_id, &t_rcv, msg_size(), 0);
+        j = 0;
+        for (i = get_node(node_position).last - 1; i >= 0; i--) {
+            block_to_process.transazioni[j] = transaction_pool[i];
+            j++;
+
+            if (j % (SO_BLOCK_SIZE - 1) == 0) {
+                block_to_process.transazioni[j + 1] = generate_reward(block_reward);
+                j++;
+
+                sem_reserve(ids.sem, LEDGER_WRITE);
+
+                if (*sh.ledger_free_block == SO_REGISTRY_SIZE) {
+                    sem_release(ids.sem, LEDGER_WRITE);
+
+                    sem_reserve(ids.sem, STOP_WRITE);
+                    *sh.stop = LEDGERFULL;
+                    sem_release(ids.sem, STOP_WRITE);
+                } else {
+                    *sh.ledger_free_block += 1;
+                    block_pointer = *sh.ledger_free_block;
+
+                    /* Scriviamo i primi SO_BLOCK_SIZE-1 blocchi nel libro mastro */
+                    sh.ledger[block_pointer] = block_to_process;
+
+                    sem_release(ids.sem, LEDGER_WRITE);
+
+                    sem_reserve(ids.sem, NODES_PID_WRITE);
+                    /* Sottraiamo SO_BLOCK_SIZE - 1 al puntatore all'ultimo elemento libero della TP, in modo da "rimuovere"
+                     * il blocco estratto dalla TP (si andrà a sovrascrivere sulle transazioni già scritte sul libro mastro)*/
+                    sh.nodes_pid[node_position].last -= (SO_BLOCK_SIZE - 1);
+                    sem_release(ids.sem, NODES_PID_WRITE);
+                }
             }
         }
     }

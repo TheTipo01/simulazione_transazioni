@@ -203,7 +203,6 @@ void expand_node() {
 
 void check_for_update() {
     if (*sh.new_nodes_pid != ids.nodes_pid) {
-        fprintf(stderr, "we do be checking\n");
         cfg.SO_NODES_NUM++;
         ids.nodes_pid = *sh.new_nodes_pid;
         shmdt_error_checking(sh.nodes_pid);
