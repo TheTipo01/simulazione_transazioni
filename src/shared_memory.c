@@ -98,27 +98,17 @@ void attach_shared_memory() {
     TEST_ERROR;
 }
 
-void detach_and_delete() {
-    shmdt_error_checking(sh.ledger);
-    shmdt_error_checking(sh.nodes_pid);
-    shmdt_error_checking(sh.users_pid);
-    shmdt_error_checking(sh.ledger_read);
-    shmdt_error_checking(sh.stop);
-    shmdt_error_checking(sh.ledger_free_block);
-    shmdt_error_checking(sh.stop_read);
-    shmdt_error_checking(sh.mmts);
-    shmdt_error_checking(sh.new_nodes_pid);
-    shmdt_error_checking(sh.nodes_pid_read);
-    shmdt_error_checking(sh.user_waiting);
-
+void delete_shared_memory() {
     semctl(ids.sem, 0, IPC_RMID);
+    shmctl(ids.ledger, IPC_RMID, NULL);
+    shmctl(ids.ledger_read, IPC_RMID, NULL);
     shmctl(ids.nodes_pid, IPC_RMID, NULL);
     shmctl(ids.users_pid, IPC_RMID, NULL);
-    shmctl(ids.ledger_read, IPC_RMID, NULL);
     shmctl(ids.stop, IPC_RMID, NULL);
     shmctl(ids.ledger_free_block, IPC_RMID, NULL);
     shmctl(ids.stop_read, IPC_RMID, NULL);
     shmctl(ids.mmts, IPC_RMID, NULL);
+    shmctl(ids.mmts_free_block, IPC_RMID, NULL);
     shmctl(ids.new_nodes_pid, IPC_RMID, NULL);
     shmctl(ids.nodes_pid_read, IPC_RMID, NULL);
     shmctl(ids.user_waiting, IPC_RMID, NULL);

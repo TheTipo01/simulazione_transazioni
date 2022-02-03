@@ -149,7 +149,6 @@ void start_node(unsigned int index) {
             } else {
                 *sh.ledger_free_block += 1;
                 block_pointer = *sh.ledger_free_block;
-                sem_release(ids.sem, LEDGER_WRITE);
 
                 /* Scriviamo i primi SO_BLOCK_SIZE-1 blocchi nel libro mastro */
                 for (i = (int) (get_node(node_position).last - (SO_BLOCK_SIZE - 1));
@@ -157,9 +156,13 @@ void start_node(unsigned int index) {
                     sh.ledger[block_pointer].transazioni[i] = transaction_pool[i];
                 }
                 sh.ledger[block_pointer].transazioni[i + 1] = generate_reward(block_reward);
+                sem_release(ids.sem, LEDGER_WRITE);
 
-                /* Sottraiamo SO_BLOCK_SIZE - 1 al puntatore all'ultimo elemento libero della TP, in modo da "rimuovere"
-                 * il blocco estratto dalla TP (si andrà a sovrascrivere sulle transazioni già scritte sul libro mastro)*/
+
+                /*
+                 * Sottraiamo SO_BLOCK_SIZE - 1 al puntatore all'ultimo elemento libero della TP, in modo da "rimuovere"
+                 * il blocco estratto dalla TP (si andrà a sovrascrivere sulle transazioni già scritte sul libro mastro)
+                 */
                 sem_reserve(ids.sem, NODES_PID_WRITE);
                 sh.nodes_pid[node_position].last -= (SO_BLOCK_SIZE - 1);
                 sem_release(ids.sem, NODES_PID_WRITE);
@@ -191,8 +194,8 @@ void start_node(unsigned int index) {
         }
     }
 
-    cleanup:
     /* Cleanup prima di uscire */
+    cleanup:
     /* Impostazione dello stato del nostro processo */
     check_for_update();
     sem_reserve(ids.sem, NODES_PID_WRITE);
@@ -201,6 +204,7 @@ void start_node(unsigned int index) {
 
     /* Liberiamo la memoria allocata con malloc */
     free(transaction_pool);
+    free(node_friends);
 }
 
 void enlarge_friends(int sig) {

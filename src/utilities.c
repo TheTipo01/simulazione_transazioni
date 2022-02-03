@@ -191,11 +191,14 @@ void expand_node() {
         new[i] = sh.nodes_pid[i];
     }
 
+    shmdt_error_checking(new);
     shmdt_error_checking(sh.nodes_pid);
     shmctl(ids.nodes_pid, IPC_RMID, NULL);
 
-    sh.nodes_pid = new;
-    ids.nodes_pid = ids.new_nodes_pid;
+    sh.nodes_pid = shmat(*sh.new_nodes_pid, NULL, 0);
+    ids.nodes_pid = *sh.new_nodes_pid;
+
+    cfg.SO_NODES_NUM++;
 }
 
 void check_for_update() {

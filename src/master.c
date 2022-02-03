@@ -91,7 +91,6 @@ int main(int argc, char *argv[]) {
                 for (j = 0; j < cfg.SO_NUM_FRIENDS; j++) {
                     friend[j] = (int) (random() % cfg.SO_NODES_NUM);
                 }
-
                 shmdt_error_checking(friend);
         }
     }
@@ -137,7 +136,6 @@ int main(int argc, char *argv[]) {
 
             /* Espansione dell'array nodes_pid e aumento del numero di nodi presenti */
             expand_node();
-            cfg.SO_NODES_NUM++;
 
             fprintf(stderr, "semo qui\n");
 
@@ -172,11 +170,12 @@ int main(int argc, char *argv[]) {
                         msgsnd(get_node(temp_pid.index).msg_id, &temp_pid, sizeof(int), 0);
                         fprintf(stderr, "habemus inviatum\n");
                     }
+
+                    shmdt_error_checking(friend);
             }
 
             fprintf(stderr, "CALABRIA\n");
             msgsnd(sh.nodes_pid[cfg.SO_NODES_NUM - 1].msg_id, &temp_tran, msg_size(), 0);
-
             sem_release(ids.sem, NODES_PID_WRITE);
         }
 
@@ -281,8 +280,8 @@ int main(int argc, char *argv[]) {
     }
 
     /* Cleanup finale */
-    detach_and_delete();
     delete_message_queue();
+    delete_shared_memory();
 
     return 0;
 }

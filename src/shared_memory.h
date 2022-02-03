@@ -14,8 +14,8 @@ void get_shared_ids();
 /* Attach di tutte le memorie condivise */
 void attach_shared_memory();
 
-/* Detach e flag per eliminazione delle memorie condivise una volta terminato il programma */
-void detach_and_delete();
+/* Eliminazione delle memorie condivise in uso */
+void delete_shared_memory();
 
 /* Eliminazione delle code di messaggi in uso */
 void delete_message_queue();
