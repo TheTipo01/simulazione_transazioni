@@ -109,6 +109,7 @@ void start_node(unsigned int index) {
                 sh.nodes_pid[node_position].last++;
                 sem_release(ids.sem, NODES_PID_WRITE);
             }
+            fprintf(stderr, "pid %d last %d\n", getpid(), get_node(node_position).last);
         }
         if (errno && errno != ENOMSG) {
             if (get_stop_value() != -1) {
@@ -122,12 +123,13 @@ void start_node(unsigned int index) {
         /* TP piena: inviamo le transazioni ad altri nodi */
         if (get_node(node_position).last >= cfg.SO_TP_SIZE) {
             while (msgrcv(get_node(node_position).msg_id, &t_rcv, msg_size(), 1, IPC_NOWAIT) != -1) {
-                if (t_rcv.hops == cfg.SO_HOPS) {
+                check_for_update();
+                target_node = node_friends[random_between_two(0, cfg.SO_NUM_FRIENDS)];
+                t_rcv.hops++;
+                if (t_rcv.hops > cfg.SO_HOPS) {
+                    fprintf(stderr, "good\n");
                     msgsnd(ids.master_msg_id, &t_rcv, msg_size(), 0);
                 } else {
-                    check_for_update();
-                    target_node = node_friends[random_between_two(0, cfg.SO_NUM_FRIENDS)];
-                    t_rcv.hops++;
                     msgsnd(get_node(target_node).msg_id, &t_rcv, msg_size(), 0);
                 }
             }
@@ -140,6 +142,8 @@ void start_node(unsigned int index) {
                 }
             }
         }
+
+        fprintf(stderr, "finito\n");
 
         j = 0;
         for (i = get_node(node_position).last - 1; i >= 0; i--) {
@@ -193,7 +197,8 @@ void start_node(unsigned int index) {
 void enlarge_friends(int sig) {
     struct Messaggio_PID msg;
     if (sig == SIGALRM) {
-        msgrcv(get_node(node_position).msg_id, &msg, sizeof(int), 2, 0);
+        msgrcv(ids.master_msg_id, &msg, sizeof(int), get_node(node_position).pid, 0);
+        fprintf(stderr, "YOU'RE MY FRIEND NOW PID=%d. WE'RE HAVING SOFT TACOS LATER with %d :)\n", getpid(), msg.index);
 
         cfg.SO_NUM_FRIENDS += 1;
 

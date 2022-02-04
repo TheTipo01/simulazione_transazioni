@@ -22,6 +22,7 @@
 #include <sys/shm.h>
 #include <sys/msg.h>
 
+#define lastindex cfg.SO_NODES_NUM - 1
 /*
  * master: crea SO_USERS_NUM processi utente, gestisce simulazione
  * user: fa transaction
@@ -34,7 +35,7 @@ struct SharedMemoryID ids;
 
 int main(int argc, char *argv[]) {
     unsigned int exec_time = 0;
-    int i, j, cont, current_pid, status, rnd_friend, *friend;
+    int i, j, cont, current_pid, status, rnd_friend, *friend, node_to_send;
     struct Messaggio temp_tran;
     struct Messaggio_PID temp_pid;
     sigset_t wset;
@@ -130,14 +131,10 @@ int main(int argc, char *argv[]) {
                 }
             }
 
-            fprintf(stderr, "we do be receiving\n");
-
             sem_reserve(ids.sem, NODES_PID_WRITE);
 
             /* Espansione dell'array nodes_pid e aumento del numero di nodi presenti */
             expand_node();
-
-            fprintf(stderr, "semo qui\n");
 
             /* Creazione del nuovo nodo */
             switch (current_pid = fork()) {
@@ -145,40 +142,41 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "Error forking\n");
                     exit(EXIT_FAILURE);
                 case 0:
-                    start_node(cfg.SO_NODES_NUM);
+                    start_node(lastindex);
                     exit(EXIT_SUCCESS);
                 default:
-                    sh.nodes_pid[cfg.SO_NODES_NUM - 1].pid = current_pid;
-                    sh.nodes_pid[cfg.SO_NODES_NUM - 1].balance = 0;
-                    sh.nodes_pid[cfg.SO_NODES_NUM - 1].status = PROCESS_WAITING;
-                    sh.nodes_pid[cfg.SO_NODES_NUM - 1].last = 0;
-                    sh.nodes_pid[cfg.SO_NODES_NUM - 1].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
-                    sh.nodes_pid[cfg.SO_NODES_NUM - 1].friends = shmget(IPC_PRIVATE, sizeof(int) * cfg.SO_NUM_FRIENDS,
-                                                                        GET_FLAGS);
-                    friend = shmat(sh.nodes_pid[cfg.SO_NODES_NUM - 1].friends, NULL, 0);
+                    sh.nodes_pid[lastindex].pid = current_pid;
+                    sh.nodes_pid[lastindex].balance = 0;
+                    sh.nodes_pid[lastindex].status = PROCESS_WAITING;
+                    sh.nodes_pid[lastindex].last = 0;
+                    sh.nodes_pid[lastindex].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
+                    sh.nodes_pid[lastindex].friends = shmget(IPC_PRIVATE,
+                                                             sizeof(int) * cfg.SO_NUM_FRIENDS, GET_FLAGS);
+                    sem_release(ids.sem, NODES_PID_WRITE);
+
+                    friend = shmat(get_node(lastindex).friends, NULL, 0);
+
+                    temp_pid.index = (int) lastindex;
 
                     for (j = 0; j < cfg.SO_NUM_FRIENDS; j++) {
                         /* Popolazione della lista amici del nuovo nodo */
-                        sem_reserve(ids.sem, NODES_PID_WRITE);
                         friend[j] = (int) (random() % cfg.SO_NODES_NUM);
-                        sem_reserve(ids.sem, NODES_PID_WRITE);
+
+                        node_to_send = (int) (random() % cfg.SO_NODES_NUM);
+                        temp_pid.m_type = get_node(node_to_send).pid;
 
                         /* Selezionamento di SO_NUM_FRIENDS nodi a cui deve essere aggiunto il nuovo nodo nella lista amici */
-                        temp_pid.index = (int) (random() % cfg.SO_NODES_NUM);
-                        temp_pid.m_type = 2;
-                        fprintf(stderr, "habemus not inviatum\n");
-                        msgsnd(get_node(temp_pid.index).msg_id, &temp_pid, sizeof(int), 0);
-                        fprintf(stderr, "habemus inviatum\n");
+                        msgsnd(ids.master_msg_id, &temp_pid, sizeof(int), 0);
+                        TEST_ERROR;
+                        kill((int) temp_pid.m_type, SIGALRM);
                     }
 
                     shmdt_error_checking(friend);
+                    msgsnd(get_node(temp_pid.index).msg_id, &temp_tran, msg_size(), 0);
+                    TEST_ERROR;
+                    kill(current_pid, SIGUSR1);
             }
-
-            fprintf(stderr, "CALABRIA\n");
-            msgsnd(sh.nodes_pid[cfg.SO_NODES_NUM - 1].msg_id, &temp_tran, msg_size(), 0);
-            sem_release(ids.sem, NODES_PID_WRITE);
         }
-
         exit(EXIT_SUCCESS);
     }
 
@@ -215,6 +213,7 @@ int main(int argc, char *argv[]) {
     /* Aspettiamo che i processi finiscano */
     for (i = 0; i < cfg.SO_NODES_NUM + cfg.SO_USERS_NUM; i++) {
         waitpid(-1, &status, 0);
+        check_for_update();
     }
 
     /*

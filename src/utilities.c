@@ -185,8 +185,6 @@ void expand_node() {
     *sh.new_nodes_pid = shmget(IPC_PRIVATE, (cfg.SO_NODES_NUM + 1) * sizeof(struct ProcessoNode), GET_FLAGS);
     new = shmat(*sh.new_nodes_pid, NULL, 0);
 
-    fprintf(stderr, "we do be expanding\n");
-
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         new[i] = sh.nodes_pid[i];
     }
