@@ -166,15 +166,15 @@ int main(int argc, char *argv[]) {
                         temp_pid.m_type = get_node(node_to_send).pid;
 
                         /* Selezionamento di SO_NUM_FRIENDS nodi a cui deve essere aggiunto il nuovo nodo nella lista amici */
-                        msgsnd(ids.master_msg_id, &temp_pid, sizeof(int), 0);
+                        msgsnd(ids.master_msg_id, &temp_pid, sizeof(struct Messaggio_PID) - sizeof(long), 0);
                         TEST_ERROR;
                         kill((int) temp_pid.m_type, SIGALRM);
                     }
 
                     shmdt_error_checking(friend);
                     msgsnd(get_node(temp_pid.index).msg_id, &temp_tran, msg_size(), 0);
-                    TEST_ERROR;
                     kill(current_pid, SIGUSR1);
+                    TEST_ERROR;
             }
         }
         exit(EXIT_SUCCESS);
@@ -200,9 +200,6 @@ int main(int argc, char *argv[]) {
             *sh.stop = TIMEDOUT;
             sem_release(ids.sem, STOP_WRITE);
         }
-
-        /* Segnale di stop per i processi child */
-        kill(0, SIGUSR1);
 
         /* Per forzare i nodi a uscire, eliminiamo la loro message queue */
         delete_message_queue();

@@ -17,6 +17,6 @@ void start_node(unsigned int index);
 struct Transazione generate_reward(unsigned int tot_reward);
 
 /* Funzione incaricata di aggiungere un nodo alla lista dei nodi amici */
-void enlarge_friends(int sig);
+void enlarge_friends();
 
 #endif

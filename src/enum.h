@@ -8,7 +8,6 @@ enum semafori {
     MMTS,
     NODES_PID_WRITE,
     NODES_PID_READ,
-    USER_WAITING,
     FINE_SEMAFORI
 };
 

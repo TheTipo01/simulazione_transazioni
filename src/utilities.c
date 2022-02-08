@@ -43,8 +43,6 @@ void print_more_status() {
 
     setvbuf(stdout, NULL, _IONBF, 0);
 
-    check_for_update();
-
     for (i = 0; i < 3; i++) {
         t3_users[i].balance = 0;
         t3_users[i].status = 0;
@@ -69,6 +67,8 @@ void print_more_status() {
         }
     }
 
+
+    check_for_update();
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         if (sh.nodes_pid[i].status != PROCESS_FINISHED) {
             active_nodes++;
@@ -103,6 +103,7 @@ void print_more_status() {
         }
     }
 
+    check_for_update();
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         if (sh.nodes_pid[i].balance > t3_nodes[0].balance) {
             temp_node = t3_nodes[1];

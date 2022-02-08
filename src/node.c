@@ -42,9 +42,10 @@ void start_node(unsigned int index) {
     struct Messaggio t_rcv;
     struct sigaction sa;
     struct Blocco block_to_process;
+    struct msqid_ds info;
     sigset_t wset;
 
-    /* Seeding di rand con il tempo attuale */
+    /* Seeding di rand con il PID del processo */
     srandom(getpid());
 
     /* Allocazione della memoria per la transaction pool */
@@ -59,15 +60,16 @@ void start_node(unsigned int index) {
      * Child aspettano un segnale dal parent: possono iniziare la loro funzione solo dopo che vengono generati
      * tutti gli altri child
      */
+    if (node_position > 9) fprintf(stderr, "aspettando segnale\n");
     sigwait(&wset, &sig);
+    if (node_position > 9) fprintf(stderr, "avviato\n");
 
     /* Mascheriamo i segnali che usiamo */
     sigprocmask(SIG_SETMASK, &wset, NULL);
 
-    signal(SIGALRM, enlarge_friends);
-
     /* Ciclo principale di ricezione e processing delle transazioni */
     check_for_update();
+
     sem_reserve(ids.sem, NODES_PID_WRITE);
     sh.nodes_pid[node_position].status = PROCESS_RUNNING;
     node_friends_tmp = shmat(sh.nodes_pid[node_position].friends, NULL, 0);
@@ -80,6 +82,8 @@ void start_node(unsigned int index) {
     shmctl(sh.nodes_pid[node_position].friends, IPC_RMID, NULL);
 
     while (get_stop_value() == -1) {
+        enlarge_friends();
+
         block_reward = 0;
         while (msgrcv(get_node(node_position).msg_id, &t_rcv, msg_size(), 1, IPC_NOWAIT) != -1 &&
                get_node(node_position).last < cfg.SO_TP_SIZE) {
@@ -109,7 +113,6 @@ void start_node(unsigned int index) {
                 sh.nodes_pid[node_position].last++;
                 sem_release(ids.sem, NODES_PID_WRITE);
             }
-            fprintf(stderr, "pid %d last %d\n", getpid(), get_node(node_position).last);
         }
         if (errno && errno != ENOMSG) {
             if (get_stop_value() != -1) {
@@ -120,19 +123,26 @@ void start_node(unsigned int index) {
             }
         }
 
+        if (node_position == 10) fprintf(stderr, "last = %u\n", sh.nodes_pid[node_position].last);
+
         /* TP piena: inviamo le transazioni ad altri nodi */
         if (get_node(node_position).last >= cfg.SO_TP_SIZE) {
-            while (msgrcv(get_node(node_position).msg_id, &t_rcv, msg_size(), 1, IPC_NOWAIT) != -1) {
+            msgctl(get_node(node_position).msg_id, IPC_STAT, &info);
+            i = 0;
+            while (msgrcv(get_node(node_position).msg_id, &t_rcv, msg_size(), 1, IPC_NOWAIT) != -1 &&
+                   i < info.msg_qnum) {
                 check_for_update();
                 target_node = node_friends[random_between_two(0, cfg.SO_NUM_FRIENDS)];
                 t_rcv.hops++;
-                if (t_rcv.hops > cfg.SO_HOPS) {
+                if (t_rcv.hops >= cfg.SO_HOPS) {
                     fprintf(stderr, "good\n");
                     msgsnd(ids.master_msg_id, &t_rcv, msg_size(), 0);
                 } else {
                     msgsnd(get_node(target_node).msg_id, &t_rcv, msg_size(), 0);
                 }
+                i++;
             }
+            fprintf(stderr, "msg queue empty for node #%d\n", getpid());
             if (errno && errno != ENOMSG) {
                 if (get_stop_value() != -1) {
                     goto cleanup;
@@ -143,10 +153,12 @@ void start_node(unsigned int index) {
             }
         }
 
+        /*
         fprintf(stderr, "finito\n");
+         */
 
         j = 0;
-        for (i = get_node(node_position).last - 1; i >= 0; i--) {
+        for (i = get_node(node_position).last - 1; i >= 0 && get_node(node_position).last > (SO_BLOCK_SIZE - 1); i--) {
             block_to_process.transazioni[j] = transaction_pool[i];
             j++;
 
@@ -168,7 +180,6 @@ void start_node(unsigned int index) {
 
                     /* Scriviamo i primi SO_BLOCK_SIZE-1 blocchi nel libro mastro */
                     sh.ledger[block_pointer] = block_to_process;
-
                     sem_release(ids.sem, LEDGER_WRITE);
 
                     sem_reserve(ids.sem, NODES_PID_WRITE);
@@ -194,10 +205,9 @@ void start_node(unsigned int index) {
     free(node_friends);
 }
 
-void enlarge_friends(int sig) {
+void enlarge_friends() {
     struct Messaggio_PID msg;
-    if (sig == SIGALRM) {
-        msgrcv(ids.master_msg_id, &msg, sizeof(int), get_node(node_position).pid, 0);
+    if (msgrcv(ids.master_msg_id, &msg, sizeof(int), get_node(node_position).pid, IPC_NOWAIT) != -1) {
         fprintf(stderr, "YOU'RE MY FRIEND NOW PID=%d. WE'RE HAVING SOFT TACOS LATER with %d :)\n", getpid(), msg.index);
 
         cfg.SO_NUM_FRIENDS += 1;
