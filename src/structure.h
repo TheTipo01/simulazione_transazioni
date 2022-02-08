@@ -118,8 +118,7 @@ struct SharedMemoryID {
     /* Numero di processi in lettura su nodes_pid */
     int nodes_pid_read;
 
-    /* Numero di processi utenti che aspettano un aumento del bilancio */
-    int user_waiting;
+    int nodes_num;
 };
 
 /* Struttura dati per contenere la memoria condivisa usata nel programma */
@@ -157,8 +156,7 @@ struct SharedMemory {
     /* Numero di processi in lettura su nodes_pid */
     unsigned int *nodes_pid_read;
 
-    /* Numero di processi utenti che aspettano un aumento del bilancio */
-    unsigned int *user_waiting;
+    unsigned int *nodes_num;
 };
 
 struct Messaggio_PID {

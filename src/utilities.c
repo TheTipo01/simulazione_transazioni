@@ -5,6 +5,7 @@
 #include "master.h"
 #include "enum.h"
 #include "shared_memory.h"
+#include "rwlock.h"
 
 #include <stdio.h>
 #include <sys/shm.h>
@@ -12,6 +13,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/msg.h>
 
 char *format_time(time_t rawtime) {
     struct tm *timeinfo;
@@ -198,11 +200,12 @@ void expand_node() {
     ids.nodes_pid = *sh.new_nodes_pid;
 
     cfg.SO_NODES_NUM++;
+    *sh.nodes_num = cfg.SO_NODES_NUM;
 }
 
 void check_for_update() {
     if (*sh.new_nodes_pid != ids.nodes_pid) {
-        cfg.SO_NODES_NUM++;
+        cfg.SO_NODES_NUM = *sh.nodes_num;
         ids.nodes_pid = *sh.new_nodes_pid;
         shmdt_error_checking(sh.nodes_pid);
         sh.nodes_pid = shmat(ids.nodes_pid, NULL, 0);

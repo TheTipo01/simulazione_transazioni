@@ -49,8 +49,8 @@ void get_shared_ids() {
     ids.nodes_pid_read = shmget(IPC_PRIVATE, sizeof(unsigned int), GET_FLAGS);
     shmget_error_checking(ids.nodes_pid_read);
 
-    ids.user_waiting = shmget(IPC_PRIVATE, sizeof(unsigned int), GET_FLAGS);
-    shmget_error_checking(ids.user_waiting);
+    ids.nodes_num = shmget(IPC_PRIVATE, sizeof(unsigned int), GET_FLAGS);
+    shmget_error_checking(ids.nodes_num);
 
     /* Inizializziamo i semafori che usiamo */
     ids.sem = semget(IPC_PRIVATE, NUM_SEMAFORI, GET_FLAGS);
@@ -94,7 +94,7 @@ void attach_shared_memory() {
     sh.nodes_pid_read = shmat(ids.nodes_pid_read, NULL, 0);
     TEST_ERROR;
 
-    sh.user_waiting = shmat(ids.user_waiting, NULL, 0);
+    sh.nodes_num = shmat(ids.nodes_num, NULL, 0);
     TEST_ERROR;
 }
 
@@ -111,7 +111,7 @@ void delete_shared_memory() {
     shmctl(ids.mmts_free_block, IPC_RMID, NULL);
     shmctl(ids.new_nodes_pid, IPC_RMID, NULL);
     shmctl(ids.nodes_pid_read, IPC_RMID, NULL);
-    shmctl(ids.user_waiting, IPC_RMID, NULL);
+    shmctl(ids.nodes_num, IPC_RMID, NULL);
 }
 
 void delete_message_queue() {

@@ -54,6 +54,7 @@ int main(int argc, char *argv[]) {
     /* In questo punto del codice solo il processo master può leggere/scrivere sulle shared memory */
     *sh.stop = -1;
     *sh.new_nodes_pid = ids.nodes_pid;
+    *sh.nodes_num = cfg.SO_NODES_NUM;
 
     /* I semafori usati li usiamo come mutex: inizializziamo i loro valori ad 1 */
     for (i = 0; i < NUM_SEMAFORI; i++) {
@@ -136,6 +137,8 @@ int main(int argc, char *argv[]) {
             /* Espansione dell'array nodes_pid e aumento del numero di nodi presenti */
             expand_node();
 
+            fprintf(stderr, "CALABRIA\n");
+
             /* Creazione del nuovo nodo */
             switch (current_pid = fork()) {
                 case -1:
@@ -168,7 +171,6 @@ int main(int argc, char *argv[]) {
                         /* Selezionamento di SO_NUM_FRIENDS nodi a cui deve essere aggiunto il nuovo nodo nella lista amici */
                         msgsnd(ids.master_msg_id, &temp_pid, sizeof(struct Messaggio_PID) - sizeof(long), 0);
                         TEST_ERROR;
-                        kill((int) temp_pid.m_type, SIGALRM);
                     }
 
                     shmdt_error_checking(friend);
