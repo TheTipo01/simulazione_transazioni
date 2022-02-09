@@ -5,7 +5,6 @@
 #include "master.h"
 #include "enum.h"
 #include "shared_memory.h"
-#include "rwlock.h"
 
 #include <stdio.h>
 #include <sys/shm.h>
@@ -192,13 +191,16 @@ void expand_node() {
         new[i] = sh.nodes_pid[i];
     }
 
+    /* Detach ed eliminazione del vecchio segmento */
     shmdt_error_checking(new);
     shmdt_error_checking(sh.nodes_pid);
     shmctl(ids.nodes_pid, IPC_RMID, NULL);
 
+    /* Attach del nuovo segmento */
     sh.nodes_pid = shmat(*sh.new_nodes_pid, NULL, 0);
     ids.nodes_pid = *sh.new_nodes_pid;
 
+    /* Incremento del numero di nodi avviati */
     cfg.SO_NODES_NUM++;
     *sh.nodes_num = cfg.SO_NODES_NUM;
 }

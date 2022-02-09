@@ -6,7 +6,7 @@
  * Provvede a ricevere le transazioni dai processi utente, immagazzinarle in una pool e infine processarle (aggiungendole
  * al libro mastro) in blocco.
  * Come parametro è presente il solo puntatore alla sua posizione nell'array dei nodi presente in memoria condivisa,
- * in quanto il resto dei dati che gli servono per eseguire le sue operazioni sono presenti in mem. condivisa.
+ * in quanto il resto dei dati che gli servono per eseguire le sue operazioni sono presenti in memoria condivisa.
  */
 void start_node(unsigned int index);
 

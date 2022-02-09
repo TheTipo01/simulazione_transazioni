@@ -97,7 +97,7 @@ struct SharedMemoryID {
     /* Numero di processi attualmente in lettura su ledger */
     int ledger_read;
 
-    /* Flag usato per far uscire i processi e per sapere perchè sono usciti */
+    /* Flag usato per far uscire i processi e per sapere perché sono usciti */
     int stop;
 
     /* Primo blocco libero nel ledger (libro mastro) */
@@ -112,12 +112,16 @@ struct SharedMemoryID {
     /* Coda di messaggi usata per inviare la transazioni indietro al processo master */
     int master_msg_id;
 
-    /* ID della shared memory dei nodi. Usata per controllare se abbiamo agginto un nodo */
+    /* Coda di messaggi usata per ricevere i nuovi nodi amici da aggiungere dai nodi */
+    int msg_friends;
+
+    /* ID della shared memory dei nodi. Usata per controllare se abbiamo aggiunto un nodo */
     int new_nodes_pid;
 
     /* Numero di processi in lettura su nodes_pid */
     int nodes_pid_read;
 
+    /* Numero di processi nodo avviati */
     int nodes_num;
 };
 
@@ -141,7 +145,7 @@ struct SharedMemory {
     /* Numero di processi attualmente in lettura su ledger */
     unsigned int *ledger_read;
 
-    /* Flag usato per far uscire i processi e per sapere perchè sono usciti */
+    /* Flag usato per far uscire i processi e per sapere perché sono usciti */
     int *stop;
 
     /* Primo blocco libero nel ledger (libro mastro) */
@@ -150,20 +154,22 @@ struct SharedMemory {
     /* Numero di processi in lettura su stop */
     unsigned int *stop_read;
 
-    /* ID della shared memory dei nodi. Usata per controllare se abbiamo agginto un nodo */
+    /* ID della shared memory dei nodi. Usata per controllare se abbiamo aggiunto un nodo */
     int *new_nodes_pid;
 
     /* Numero di processi in lettura su nodes_pid */
     unsigned int *nodes_pid_read;
 
+    /* Numero di processi nodo avviati */
     unsigned int *nodes_num;
 };
 
-struct Messaggio_PID {
+struct Messaggio_int {
     /* Tipo di messaggio (richiesto dalle message queue) */
     long m_type;
 
-    int index;
+    /* Semplice numero */
+    int n;
 };
 
 #endif

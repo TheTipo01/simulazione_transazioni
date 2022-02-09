@@ -23,6 +23,7 @@
         } \
         } while(0)
 
+/* Macro per controllare errori su errno */
 #define TEST_ERROR do \
         {                      \
         if (errno)    \
@@ -31,7 +32,9 @@
         } \
         } while (0)
 
+/* Macro per pulire lo schermo */
 #define clrscr() printf("\033[1;1H\033[2J")
+/* Dimensione di un messaggio contenente una transazione */
 #define msg_size() sizeof(struct Messaggio) - sizeof(long)
 
 /*
@@ -44,8 +47,8 @@ void shmget_error_checking(int id);
  * Funzione alternativa più completa per visualizzare lo stato dei processi. Vengono stampati:
  *      N° di processi utente attivi
  *      N° di processi nodo attivi
- *      I 3 utenti con bilancio più alto e i 3 con bilancio più basso
- *      I 3 nodi con bilancio più alto e i 3 con bilancio più basso
+ *      I tre utenti con bilancio più alto e i tre con bilancio più basso
+ *      I tre nodi con bilancio più alto e i tre con bilancio più basso
  *      PID, bilancio e stato dei processi osservati
  */
 void print_more_status();
@@ -56,18 +59,22 @@ int sleeping(long waiting_time);
 /* Funzione che dato un tempo time_t restituisce una stringa formattata a partire dal timestamp. */
 char *format_time(time_t rawtime);
 
-/* Funzione utile ad ottenere una stringa appropriata per lo stato del processo osservato. Utilizzata principalmente
- * per la visualizzazione, nella funzione print_status e print_more_status. */
+/*
+ * Funzione utile a ottenere una stringa appropriata per lo stato del processo osservato. Utilizzata principalmente
+ * per la visualizzazione, nella funzione print_status e print_more_status.
+ */
 char *get_status(int status);
 
 /* Funzione che ritorna un numero casuale in un range definito. */
 long random_between_two(long min, long max);
 
-/* Funzione delegata di allargare il  */
+/* Funzione delegata di allargare l'array sh.nodes_pid */
 void expand_node();
 
-/* Funzione che controlla se bisogna eseguire il reattach della shared mem, solitamente accade dopo che viene creato un
- * nuovo nodo (l'array nodes_pid in memoria condivisa viene espanso)*/
+/*
+ * Funzione che controlla se bisogna eseguire il reattach della shared mem, solitamente accade dopo che viene creato un
+ * nuovo nodo (l'array nodes_pid in memoria condivisa viene espanso)
+ */
 void check_for_update();
 
 #endif

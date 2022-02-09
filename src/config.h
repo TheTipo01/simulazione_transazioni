@@ -17,8 +17,10 @@ typedef struct Config {
     /* La percentuale di reward pagata da ogni utente per il processamento di una transazione */
     unsigned int SO_REWARD;
 
-    /* Minimo e massimo valore del tempo (espresso in nanosecondi) che trascorre fra la
-    generazione di una transazione e la seguente da parte di un utente */
+    /*
+     * Minimo e massimo valore del tempo (espresso in nanosecondi) che trascorre fra la
+     * generazione di una transazione e la seguente da parte di un utente
+     */
     long SO_MIN_TRANS_GEN_NSEC, SO_MAX_TRANS_GEN_NSEC;
 
     /* Numero di volte che il processo può ritentare una transazione prima di terminare  */

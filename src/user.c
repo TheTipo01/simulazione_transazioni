@@ -1,5 +1,3 @@
-#define _GNU_SOURCE
-
 #include "config.h"
 #include "enum.h"
 #include "../vendor/libsem.h"
@@ -21,12 +19,16 @@ unsigned int calc_entrate(int sem_id, struct Blocco *lm, unsigned int *read_coun
     int pid = getpid(), j;
     unsigned int tmp_balance = 0;
 
-    /* Dobbiamo eseguire una lettura del libro mastro, quindi impostiamo il
-     * semaforo di lettura */
+    /*
+     * Dobbiamo eseguire una lettura del libro mastro, quindi impostiamo il
+     * semaforo di lettura
+     */
     read_start(sem_id, read_counter, LEDGER_READ, LEDGER_WRITE);
 
-    /* Cicliamo all'interno del libro mastro per controllare ogni transazione
-     * eseguita */
+    /*
+     * Cicliamo all'interno del libro mastro per controllare ogni transazione
+     * eseguita
+     */
     for (; last_block_checked_user < SO_REGISTRY_SIZE &&
            last_block_checked_user < *sh.ledger_free_block; last_block_checked_user++) {
         /* Se in posizione i c'è un blocco, controlliamo il contenuto */
@@ -49,8 +51,10 @@ void transaction_generator(int sig) {
     struct Messaggio msg;
     long receiver, target_node;
 
-    /* Puntatore al mittente e destinatario scelto casualmente (il PID verrà preso dalla lista di nodi/utenti a cui
-     * si accede col puntatore ottenuto) */
+    /*
+     * Puntatore al mittente e destinatario scelto casualmente (il PID verrà preso dalla lista di nodi/utenti a cui
+     * si accede col puntatore ottenuto)
+     */
     receiver = random() % cfg.SO_USERS_NUM;
     check_for_update();
     target_node = random() % cfg.SO_NODES_NUM;
@@ -92,7 +96,7 @@ void start_user(unsigned int index) {
     int sig, j, k = 0;
     sigset_t wset;
 
-    /* Seeding di rand con il index del processo */
+    /* Seeding di rand con il n del processo */
     srandom(getpid());
 
     /* Copia parametri in variabili globali */
@@ -119,8 +123,10 @@ void start_user(unsigned int index) {
         sh.users_pid[user_position].status = PROCESS_RUNNING;
         sem_reserve(ids.sem, (int) (FINE_SEMAFORI + user_position));
 
-        /* Calcolo del bilancio dell'utente: calcoliamo solo le entrate, in quanto
-         * le uscite vengono registrate dopo */
+        /*
+         * Calcolo del bilancio dell'utente: calcoliamo solo le entrate, in quanto
+         * le uscite vengono registrate dopo
+         */
         sh.users_pid[user_position].balance +=
                 calc_entrate(ids.sem, sh.ledger, sh.ledger_read);
 
@@ -151,8 +157,10 @@ void start_user(unsigned int index) {
     else
         sh.users_pid[user_position].status = PROCESS_FINISHED_PREMATURELY;
 
-    /* Se non c'è stato un ordine di uscire, controlliamo se gli altri processi
-     * abbiano finito */
+    /*
+     * Se non c'è stato un ordine di uscire, controlliamo se gli altri processi
+     * abbiano finito
+     */
     if (get_stop_value() < 0) {
         /* Contiamo il numero di processi che non hanno finito */
         for (j = 0; j < cfg.SO_USERS_NUM; j++) {

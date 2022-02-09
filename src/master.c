@@ -22,7 +22,7 @@
 #include <sys/shm.h>
 #include <sys/msg.h>
 
-#define lastindex cfg.SO_NODES_NUM - 1
+#define last_index cfg.SO_NODES_NUM - 1
 /*
  * master: crea SO_USERS_NUM processi utente, gestisce simulazione
  * user: fa transaction
@@ -35,9 +35,9 @@ struct SharedMemoryID ids;
 
 int main(int argc, char *argv[]) {
     unsigned int exec_time = 0;
-    int i, j, cont, current_pid, status, rnd_friend, *friend, node_to_send;
+    int i, j, cont, current_pid, status, *friend, node_to_send;
     struct Messaggio temp_tran;
-    struct Messaggio_PID temp_pid;
+    struct Messaggio_int temp_pid;
     sigset_t wset;
 
     /* Disattiviamo il buffering di stdout per stampare subito lo stato della simulazione */
@@ -61,9 +61,14 @@ int main(int argc, char *argv[]) {
         sem_set_val(ids.sem, i, 1);
     }
 
-    /* Inizializziamo la coda di messaggi del processo master, utilizzata per ricevere transazioni dai processi nodo,
-     * che poi dovrà mandare ad altri processi nodo creati da lui stesso. */
+    /*
+     * Inizializziamo la coda di messaggi del processo master, utilizzata per ricevere transazioni dai processi nodo,
+     * che poi dovrà mandare ad altri processi nodo creati da lui stesso.
+     */
     ids.master_msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
+
+    /* E anche la coda di messaggi usata per inviare i nodi amici nuovi da aggiungere */
+    ids.msg_friends = msgget(IPC_PRIVATE, GET_FLAGS);
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
@@ -113,7 +118,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    /* Notifichiamo i processi che gli array dei index sono stati popolati */
+    /* Notifichiamo i processi che gli array dei n sono stati popolati */
     kill(0, SIGUSR1);
 
     if (!fork()) {
@@ -145,21 +150,21 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "Error forking\n");
                     exit(EXIT_FAILURE);
                 case 0:
-                    start_node(lastindex);
+                    start_node(last_index);
                     exit(EXIT_SUCCESS);
                 default:
-                    sh.nodes_pid[lastindex].pid = current_pid;
-                    sh.nodes_pid[lastindex].balance = 0;
-                    sh.nodes_pid[lastindex].status = PROCESS_WAITING;
-                    sh.nodes_pid[lastindex].last = 0;
-                    sh.nodes_pid[lastindex].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
-                    sh.nodes_pid[lastindex].friends = shmget(IPC_PRIVATE,
-                                                             sizeof(int) * cfg.SO_NUM_FRIENDS, GET_FLAGS);
+                    sh.nodes_pid[last_index].pid = current_pid;
+                    sh.nodes_pid[last_index].balance = 0;
+                    sh.nodes_pid[last_index].status = PROCESS_WAITING;
+                    sh.nodes_pid[last_index].last = 0;
+                    sh.nodes_pid[last_index].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
+                    sh.nodes_pid[last_index].friends = shmget(IPC_PRIVATE,
+                                                              sizeof(int) * cfg.SO_NUM_FRIENDS, GET_FLAGS);
                     sem_release(ids.sem, NODES_PID_WRITE);
 
-                    friend = shmat(get_node(lastindex).friends, NULL, 0);
+                    friend = shmat(get_node(last_index).friends, NULL, 0);
 
-                    temp_pid.index = (int) lastindex;
+                    temp_pid.n = (int) last_index;
 
                     for (j = 0; j < cfg.SO_NUM_FRIENDS; j++) {
                         /* Popolazione della lista amici del nuovo nodo */
@@ -169,12 +174,12 @@ int main(int argc, char *argv[]) {
                         temp_pid.m_type = get_node(node_to_send).pid;
 
                         /* Selezionamento di SO_NUM_FRIENDS nodi a cui deve essere aggiunto il nuovo nodo nella lista amici */
-                        msgsnd(ids.master_msg_id, &temp_pid, sizeof(struct Messaggio_PID) - sizeof(long), 0);
+                        msgsnd(ids.msg_friends, &temp_pid, sizeof(struct Messaggio_int) - sizeof(long), 0);
                         TEST_ERROR;
                     }
 
                     shmdt_error_checking(friend);
-                    msgsnd(get_node(temp_pid.index).msg_id, &temp_tran, msg_size(), 0);
+                    msgsnd(get_node(temp_pid.n).msg_id, &temp_tran, msg_size(), 0);
                     kill(current_pid, SIGUSR1);
                     TEST_ERROR;
             }

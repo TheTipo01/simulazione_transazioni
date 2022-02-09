@@ -1,5 +1,3 @@
-#define _GNU_SOURCE
-
 #include "config.h"
 #include "enum.h"
 #include "structure.h"
@@ -36,7 +34,7 @@ struct Transazione generate_reward(unsigned int tot_reward) {
 }
 
 void start_node(unsigned int index) {
-    int sig, i, j, block_pointer, target_node, *node_friends_tmp, msg_id = 0;
+    int sig, i, j, block_pointer, target_node, *node_friends_tmp, msg_id;
     long tempval;
     unsigned int block_reward;
     struct Messaggio t_rcv;
@@ -65,7 +63,7 @@ void start_node(unsigned int index) {
     sigprocmask(SIG_SETMASK, &wset, NULL);
 
     /* Ciclo principale di ricezione e processing delle transazioni */
-    check_for_update(get_node(node_position).msg_id, 3);
+    check_for_update();
 
     sem_reserve(ids.sem, NODES_PID_WRITE);
     sh.nodes_pid[node_position].status = PROCESS_RUNNING;
@@ -87,7 +85,7 @@ void start_node(unsigned int index) {
             /* RNG: Una transazione su dieci viene inviata a un altro nodo */
             tempval = random_between_two(1, 10);
             if (tempval == 1) {
-                check_for_update(get_node(node_position).msg_id, 3);
+                check_for_update();
                 target_node = (int) random_between_two(0, cfg.SO_NUM_FRIENDS);
                 msg_id = get_node(node_friends[target_node]).msg_id;
                 msgsnd(msg_id, &t_rcv, msg_size(), 0);
@@ -101,7 +99,7 @@ void start_node(unsigned int index) {
                 transaction_pool[get_node(node_position).last].timestamp = t_rcv.transazione.timestamp;
                 block_reward += t_rcv.transazione.quantity * (t_rcv.transazione.reward / 100.0);
 
-                check_for_update(get_node(node_position).msg_id, 3);
+                check_for_update();
                 sem_reserve(ids.sem, NODES_PID_WRITE);
                 sh.nodes_pid[node_position].balance +=
                         t_rcv.transazione.quantity * (t_rcv.transazione.reward / 100.0);
@@ -122,16 +120,20 @@ void start_node(unsigned int index) {
         /* TP piena: inviamo le transazioni ad altri nodi */
         if (get_node(node_position).last >= cfg.SO_TP_SIZE) {
             msgctl(get_node(node_position).msg_id, IPC_STAT, &info);
+            fprintf(stderr, "#%d: tp piena. %lu\n", getpid(), info.msg_qnum);
             i = 0;
             while (msgrcv(get_node(node_position).msg_id, &t_rcv, msg_size(), 1, IPC_NOWAIT) != -1 &&
                    i < info.msg_qnum) {
-                check_for_update(get_node(node_position).msg_id, 3);
+                enlarge_friends();
+                check_for_update();
                 target_node = node_friends[random_between_two(0, cfg.SO_NUM_FRIENDS)];
                 t_rcv.hops++;
                 if (t_rcv.hops >= cfg.SO_HOPS) {
-                    msgsnd(ids.master_msg_id, &t_rcv, msg_size(), 0);
+                    msgsnd(ids.master_msg_id, &t_rcv, msg_size(), IPC_NOWAIT);
+                    TEST_ERROR;
                 } else {
-                    msgsnd(get_node(target_node).msg_id, &t_rcv, msg_size(), 0);
+                    msgsnd(get_node(target_node).msg_id, &t_rcv, msg_size(), IPC_NOWAIT);
+                    TEST_ERROR;
                 }
                 i++;
             }
@@ -147,10 +149,11 @@ void start_node(unsigned int index) {
         }
 
         j = 0;
-        for (i = get_node(node_position).last - 1; i >= 0 && get_node(node_position).last > (SO_BLOCK_SIZE - 1); i--) {
+        for (i = (int) (get_node(node_position).last) - 1;
+             i >= 0 && get_node(node_position).last > (SO_BLOCK_SIZE - 1);
+             i--) {
             block_to_process.transazioni[j] = transaction_pool[i];
             j++;
-
             if (j % (SO_BLOCK_SIZE - 1) == 0) {
                 block_to_process.transazioni[j + 1] = generate_reward(block_reward);
                 j++;
@@ -186,7 +189,7 @@ void start_node(unsigned int index) {
     /* Cleanup prima di uscire */
     cleanup:
     /* Impostazione dello stato del nostro processo */
-    check_for_update(get_node(node_position).msg_id, 3);
+    check_for_update();
     sem_reserve(ids.sem, NODES_PID_WRITE);
     sh.nodes_pid[node_position].status = PROCESS_FINISHED;
     sem_release(ids.sem, NODES_PID_WRITE);
@@ -197,17 +200,17 @@ void start_node(unsigned int index) {
 }
 
 void enlarge_friends() {
-    struct Messaggio_PID msg;
+    struct Messaggio_int msg;
 
-    while (msgrcv(ids.master_msg_id, &msg, sizeof(struct Messaggio_PID) - sizeof(long), get_node(node_position).pid,
+    /* Lettura di tutti i messaggi ricevuti nella coda di messaggi dedicata agli amici */
+    while (msgrcv(ids.msg_friends, &msg, sizeof(struct Messaggio_int) - sizeof(long), get_node(node_position).pid,
                   IPC_NOWAIT) != -1) {
-        fprintf(stderr, "YOU'RE MY FRIEND NOW PID=%d. WE'RE HAVING SOFT TACOS LATER with %d :)\n", getpid(), msg.index);
-
+        fprintf(stderr, "YOU'RE MY FRIEND NOW PID=%d. WE'RE HAVING SOFT TACOS LATER with %d :)\n", getpid(), msg.n);
         cfg.SO_NUM_FRIENDS += 1;
 
-        sem_reserve(ids.sem, NODES_PID_WRITE);
+        /* Allarghiamo l'array degli amici */
         node_friends = realloc(node_friends, sizeof(int) * cfg.SO_NUM_FRIENDS);
-        node_friends[cfg.SO_NUM_FRIENDS - 1] = msg.index;
-        sem_release(ids.sem, NODES_PID_WRITE);
+        /* E aggiungiamo il nodo agli amici */
+        node_friends[cfg.SO_NUM_FRIENDS - 1] = msg.n;
     }
 }
