@@ -23,21 +23,18 @@
 #include <sys/msg.h>
 
 #define last_index cfg.SO_NODES_NUM - 1
-/*
- * master: crea SO_USERS_NUM processi utente, gestisce simulazione
- * user: fa transaction
- * node: elabora transaction e riceve reward
- */
 
 Config cfg;
 struct SharedMemory sh;
 struct SharedMemoryID ids;
+struct ProcessoNode *nodes_pid;
 
 int main(int argc, char *argv[]) {
     unsigned int exec_time = 0;
-    int i, j, cont, current_pid, status, *friend, node_to_send;
+    int i, j, cont, current_pid, status, *friend, node_to_send, id_friends;
     struct Messaggio temp_tran;
     struct Messaggio_int temp_pid;
+    struct Messaggio_tp temp_node;
     sigset_t wset;
 
     /* Disattiviamo il buffering di stdout per stampare subito lo stato della simulazione */
@@ -53,8 +50,6 @@ int main(int argc, char *argv[]) {
 
     /* In questo punto del codice solo il processo master può leggere/scrivere sulle shared memory */
     *sh.stop = -1;
-    *sh.new_nodes_pid = ids.nodes_pid;
-    *sh.nodes_num = cfg.SO_NODES_NUM;
 
     /* I semafori usati li usiamo come mutex: inizializziamo i loro valori ad 1 */
     for (i = 0; i < NUM_SEMAFORI; i++) {
@@ -65,10 +60,14 @@ int main(int argc, char *argv[]) {
      * Inizializziamo la coda di messaggi del processo master, utilizzata per ricevere transazioni dai processi nodo,
      * che poi dovrà mandare ad altri processi nodo creati da lui stesso.
      */
-    ids.master_msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
+    ids.msg_master = msgget(IPC_PRIVATE, GET_FLAGS);
 
     /* E anche la coda di messaggi usata per inviare i nodi amici nuovi da aggiungere */
     ids.msg_friends = msgget(IPC_PRIVATE, GET_FLAGS);
+
+    ids.msg_new_node = msgget(IPC_PRIVATE, GET_FLAGS);
+
+    ids.msg_tp_remaining = msgget(IPC_PRIVATE, GET_FLAGS);
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
@@ -80,21 +79,19 @@ int main(int argc, char *argv[]) {
 
     /* Avviamo i processi node */
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
+        id_friends = shmget(IPC_PRIVATE, sizeof(int) * cfg.SO_NUM_FRIENDS, GET_FLAGS);
+
         switch (current_pid = fork()) {
             case -1:
                 fprintf(stderr, "Error forking\n");
                 exit(EXIT_FAILURE);
             case 0:
-                start_node(i);
+                start_node(i, id_friends);
                 exit(EXIT_SUCCESS);
             default:
                 sh.nodes_pid[i].pid = current_pid;
-                sh.nodes_pid[i].balance = 0;
-                sh.nodes_pid[i].status = PROCESS_WAITING;
-                sh.nodes_pid[i].last = 0;
                 sh.nodes_pid[i].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
-                sh.nodes_pid[i].friends = shmget(IPC_PRIVATE, sizeof(int) * cfg.SO_NUM_FRIENDS, GET_FLAGS);
-                friend = shmat(sh.nodes_pid[i].friends, NULL, 0);
+                friend = shmat(id_friends, NULL, 0);
                 for (j = 0; j < cfg.SO_NUM_FRIENDS; j++) {
                     friend[j] = (int) (random() % cfg.SO_NODES_NUM);
                 }
@@ -118,6 +115,10 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    /* E copia dell'array nodes_pid */
+    nodes_pid = malloc(sizeof(struct ProcessoNode) * cfg.SO_NODES_NUM);
+    memcpy(nodes_pid, sh.nodes_pid, sizeof(struct ProcessoNode) * cfg.SO_NODES_NUM);
+
     /* Notifichiamo i processi che gli array dei n sono stati popolati */
     kill(0, SIGUSR1);
 
@@ -127,7 +128,7 @@ int main(int argc, char *argv[]) {
 
         while (get_stop_value() == -1) {
             /* Ricezione della transazione che ha fatto SO_HOPS salti */
-            msgrcv(ids.master_msg_id, &temp_tran, msg_size(), 1, 0);
+            msgrcv(ids.msg_master, &temp_tran, msg_size(), 1, 0);
             if (errno) {
                 if (get_stop_value() != -1) {
                     exit(EXIT_SUCCESS);
@@ -137,13 +138,14 @@ int main(int argc, char *argv[]) {
                 }
             }
 
-            fprintf(stderr, "CALABRIA1\n");
-            sem_reserve(ids.sem, NODES_PID_WRITE);
-
             /* Espansione dell'array nodes_pid e aumento del numero di nodi presenti */
             expand_node();
 
             fprintf(stderr, "CALABRIA2\n");
+
+            id_friends = shmget(IPC_PRIVATE, sizeof(int) * cfg.SO_NUM_FRIENDS, GET_FLAGS);
+
+            nodes_pid[last_index].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
 
             /* Creazione del nuovo nodo */
             switch (current_pid = fork()) {
@@ -151,19 +153,12 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "Error forking\n");
                     exit(EXIT_FAILURE);
                 case 0:
-                    start_node(last_index);
+                    start_node(last_index, id_friends);
                     exit(EXIT_SUCCESS);
                 default:
-                    sh.nodes_pid[last_index].pid = current_pid;
-                    sh.nodes_pid[last_index].balance = 0;
-                    sh.nodes_pid[last_index].status = PROCESS_WAITING;
-                    sh.nodes_pid[last_index].last = 0;
-                    sh.nodes_pid[last_index].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
-                    sh.nodes_pid[last_index].friends = shmget(IPC_PRIVATE,
-                                                              sizeof(int) * cfg.SO_NUM_FRIENDS, GET_FLAGS);
-                    sem_release(ids.sem, NODES_PID_WRITE);
+                    nodes_pid[last_index].pid = current_pid;
 
-                    friend = shmat(get_node(last_index).friends, NULL, 0);
+                    friend = shmat(id_friends, NULL, 0);
 
                     temp_pid.n = (int) last_index;
 
@@ -185,6 +180,8 @@ int main(int argc, char *argv[]) {
                     TEST_ERROR;
             }
         }
+
+        free(nodes_pid);
         exit(EXIT_SUCCESS);
     }
 
@@ -201,13 +198,7 @@ int main(int argc, char *argv[]) {
 
         do {
             check_for_update();
-            msgctl(ids.master_msg_id, IPC_STAT, &info);
-            fprintf(stdout, "Messaggi nel master: %lu\n", info.msg_qnum);
-
-            msgctl(ids.msg_friends, IPC_STAT, &info);
-            fprintf(stdout, "Messaggi nel friend: %lu\n", info.msg_qnum);
-
-            print_more_status(sh.nodes_pid, sh.users_pid);
+            print_more_status();
             exec_time++;
         } while (exec_time < cfg.SO_SIM_SEC && !sleeping(1000000000) && get_stop_value() == -1);
 
@@ -220,6 +211,7 @@ int main(int argc, char *argv[]) {
         /* Per forzare i nodi a uscire, eliminiamo la loro message queue */
         delete_message_queue();
 
+        free(nodes_pid);
         exit(EXIT_SUCCESS);
     }
 
@@ -252,6 +244,8 @@ int main(int argc, char *argv[]) {
                     "--- TERMINE SIMULAZIONE ---\nCausa terminazione: tutti i processi utente sono terminati.\n\n");
     }
 
+    check_for_update();
+
     /* Stampa dello stato e del bilancio di ogni processo utente */
     fprintf(stdout, "PROCESSI UTENTE:\n");
     for (i = 0; i < cfg.SO_USERS_NUM; i++) {
@@ -262,7 +256,7 @@ int main(int argc, char *argv[]) {
     /* Stampa del bilancio di ogni processo nodo */
     fprintf(stdout, "PROCESSI NODO:\n");
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
-        fprintf(stdout, "       #%d, balance = %d\n", sh.nodes_pid[i].pid, sh.nodes_pid[i].balance);
+        fprintf(stdout, "       #%d, balance = %d\n", nodes_pid[i].pid, get_node_balance(i));
     }
     fprintf(stdout, "\n");
 
@@ -279,7 +273,8 @@ int main(int argc, char *argv[]) {
     /* Stampa del numero di transazioni nella TP di ogni nodo */
     fprintf(stdout, "Numero di transazioni presenti nella TP di ogni processo nodo:\n");
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
-        fprintf(stdout, "       #%d, transactions = %d\n", sh.nodes_pid[i].pid, sh.nodes_pid[i].last);
+        msgrcv(ids.msg_tp_remaining, &temp_node, sizeof(struct Messaggio_tp) - sizeof(long), 1, 0);
+        fprintf(stdout, "       #%d, transactions = %d\n", temp_node.pid, temp_node.n);
     }
 
     /* Se sono state fatte transazioni tramite CLI, vengono riportate qui. */

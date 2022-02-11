@@ -5,6 +5,7 @@
 #include "master.h"
 #include "enum.h"
 #include "shared_memory.h"
+#include "rwlock.h"
 
 #include <stdio.h>
 #include <sys/shm.h>
@@ -13,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/msg.h>
+#include <signal.h>
 
 char *format_time(time_t rawtime) {
     struct tm *timeinfo;
@@ -31,13 +33,36 @@ char *get_status(int status) {
         case 3:
             return "p-term.";
         default:
-            return "";
+            kill(status, 0);
+            if (errno) return "term.";
+            else return "running";
     }
 }
 
+int get_node_balance(int pos) {
+    int i, temp_bal = 0;
+
+    /* Dobbiamo eseguire una lettura del libro mastro, quindi impostiamo il semaforo di lettura */
+    read_start(ids.sem, sh.ledger_read, LEDGER_READ, LEDGER_WRITE);
+
+    /* Cicliamo all'interno del libro mastro per controllare l'ultima transazione di ogni blocco */
+    for (i = 0; i < SO_REGISTRY_SIZE; i++) {
+        if (sh.ledger[i].transazioni[SO_BLOCK_SIZE - 1].receiver == get_node(pos).pid) {
+
+            /* Aggiungiamo al bilancio solo le quantity dei blocchi il cui receiver è il pid del nodo in questione */
+            temp_bal += (int) sh.ledger[i].transazioni[SO_BLOCK_SIZE - 1].quantity;
+        }
+    }
+
+    /* Rilasciamo il semaforo di lettura a fine operazione */
+    read_end(ids.sem, sh.ledger_read, LEDGER_READ, LEDGER_WRITE);
+
+    return temp_bal;
+}
+
 void print_more_status() {
-    int i, active_nodes = 0, active_users = 0;
-    struct ProcessoNode t3_nodes[3], b3_nodes[3], temp_node;
+    int i, active_nodes = 0, active_users = 0, tempbal = 0;
+    struct PrintNode t3_nodes[3], b3_nodes[3], temp_node;
     struct ProcessoUser t3_users[3], b3_users[3], temp_user;
 
     clrscr();
@@ -50,7 +75,6 @@ void print_more_status() {
         t3_users[i].pid = 0;
 
         t3_nodes[i].balance = 0;
-        t3_nodes[i].status = 0;
         t3_nodes[i].pid = 0;
 
         b3_users[i].balance = cfg.SO_BUDGET_INIT + 1;
@@ -58,7 +82,6 @@ void print_more_status() {
         b3_users[i].pid = 0;
 
         b3_nodes[i].balance = 2147483647;
-        b3_nodes[i].status = 0;
         b3_nodes[i].pid = 0;
     }
 
@@ -68,9 +91,9 @@ void print_more_status() {
         }
     }
 
-    check_for_update();
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
-        if (sh.nodes_pid[i].status != PROCESS_FINISHED) {
+        kill(get_node(i).pid, 0);
+        if (errno == 0) {
             active_nodes++;
         }
     }
@@ -105,30 +128,36 @@ void print_more_status() {
 
     check_for_update();
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
-        if (sh.nodes_pid[i].balance > t3_nodes[0].balance) {
+        tempbal = get_node_balance(i);
+        if (tempbal > t3_nodes[0].balance) {
             temp_node = t3_nodes[1];
             t3_nodes[1] = t3_nodes[0];
             t3_nodes[2] = temp_node;
-            t3_nodes[0] = sh.nodes_pid[i];
-        } else if (sh.nodes_pid[i].balance > t3_nodes[1].balance) {
+            t3_nodes[0].pid = nodes_pid[i].pid;
+            t3_nodes[0].balance = tempbal;
+        } else if (tempbal > t3_nodes[1].balance) {
             temp_node = t3_nodes[1];
-            t3_nodes[1] = sh.nodes_pid[i];
+            t3_nodes[1].pid = nodes_pid[i].pid;
+            t3_nodes[1].balance = tempbal;
             t3_nodes[2] = temp_node;
-        } else if (sh.nodes_pid[i].balance > t3_nodes[2].balance) {
-            t3_nodes[2] = sh.nodes_pid[i];
+        } else if (tempbal > t3_nodes[2].balance) {
+            t3_nodes[2].pid = nodes_pid[i].pid;
         }
 
-        if (sh.nodes_pid[i].balance < b3_nodes[0].balance) {
+        if (tempbal < b3_nodes[0].balance) {
             temp_node = b3_nodes[1];
             b3_nodes[1] = b3_nodes[0];
             b3_nodes[2] = temp_node;
-            b3_nodes[0] = sh.nodes_pid[i];
-        } else if (sh.nodes_pid[i].balance < b3_nodes[1].balance) {
+            b3_nodes[0].pid = nodes_pid[i].pid;
+            b3_nodes[0].balance = tempbal;
+        } else if (tempbal < b3_nodes[1].balance) {
             temp_node = b3_nodes[1];
-            b3_nodes[1] = sh.nodes_pid[i];
+            b3_nodes[1].pid = nodes_pid[i].pid;
+            b3_nodes[1].balance = tempbal;
             b3_nodes[2] = temp_node;
-        } else if (sh.nodes_pid[i].balance < b3_nodes[2].balance) {
-            b3_nodes[2] = sh.nodes_pid[i];
+        } else if (tempbal < b3_nodes[2].balance) {
+            b3_nodes[2].pid = nodes_pid[i].pid;
+            b3_nodes[2].balance = tempbal;
         }
     }
 
@@ -139,23 +168,23 @@ void print_more_status() {
     fprintf(stdout, "\nTop/Bottom 3 Users:           Top/Bottom 3 Nodes:\n");
     fprintf(stdout, format,
             t3_users[0].pid, t3_users[0].balance, get_status(t3_users[0].status),
-            t3_nodes[0].pid, t3_nodes[0].balance, get_status(t3_nodes[0].status));
+            t3_nodes[0].pid, t3_nodes[0].balance, get_status(t3_nodes[0].pid));
     fprintf(stdout, format,
             t3_users[1].pid, t3_users[1].balance, get_status(t3_users[1].status),
-            t3_nodes[1].pid, t3_nodes[1].balance, get_status(t3_nodes[1].status));
+            t3_nodes[1].pid, t3_nodes[1].balance, get_status(t3_nodes[1].pid));
     fprintf(stdout, format,
             t3_users[2].pid, t3_users[2].balance, get_status(t3_users[2].status),
-            t3_nodes[2].pid, t3_nodes[2].balance, get_status(t3_nodes[2].status));
+            t3_nodes[2].pid, t3_nodes[2].balance, get_status(t3_nodes[2].pid));
     fprintf(stdout, "...                                 ...\n");
     fprintf(stdout, format,
             b3_users[2].pid, b3_users[2].balance, get_status(b3_users[2].status),
-            b3_nodes[2].pid, b3_nodes[2].balance, get_status(b3_nodes[2].status));
+            b3_nodes[2].pid, b3_nodes[2].balance, get_status(b3_nodes[2].pid));
     fprintf(stdout, format,
             b3_users[1].pid, b3_users[1].balance, get_status(b3_users[1].status),
-            b3_nodes[1].pid, b3_nodes[1].balance, get_status(b3_nodes[1].status));
+            b3_nodes[1].pid, b3_nodes[1].balance, get_status(b3_nodes[1].pid));
     fprintf(stdout, format,
             b3_users[0].pid, b3_users[0].balance, get_status(b3_users[0].status),
-            b3_nodes[0].pid, b3_nodes[0].balance, get_status(b3_nodes[0].status));
+            b3_nodes[0].pid, b3_nodes[0].balance, get_status(b3_nodes[0].pid));
     fprintf(stdout, "------------------------------------------------------------\n\n");
 }
 
@@ -179,38 +208,23 @@ long random_between_two(long min, long max) {
 }
 
 void expand_node() {
-    struct ProcessoNode *new;
-    int i;
+    cfg.SO_NODES_NUM += 1;
 
-    /* Creazione e copia del vecchio segmento nel nuovo più grande */
-    *sh.new_nodes_pid = shmget(IPC_PRIVATE, (cfg.SO_NODES_NUM + 1) * sizeof(struct ProcessoNode), GET_FLAGS);
-    new = shmat(*sh.new_nodes_pid, NULL, 0);
-
-    for (i = 0; i < cfg.SO_NODES_NUM; i++) {
-        new[i] = sh.nodes_pid[i];
-    }
-
-    /* Detach ed eliminazione del vecchio segmento */
-    shmdt_error_checking(new);
-    shmdt_error_checking(sh.nodes_pid);
-    shmctl(ids.nodes_pid, IPC_RMID, NULL);
-
-    /* Attach del nuovo segmento */
-    sh.nodes_pid = shmat(*sh.new_nodes_pid, NULL, 0);
-    ids.nodes_pid = *sh.new_nodes_pid;
-
-    /* Incremento del numero di nodi avviati */
-    cfg.SO_NODES_NUM++;
-    *sh.nodes_num = cfg.SO_NODES_NUM;
+    /* Allarghiamo l'array dei nodi */
+    nodes_pid = realloc(nodes_pid, sizeof(int) * cfg.SO_NODES_NUM);
 }
 
 void check_for_update() {
-    if (*sh.new_nodes_pid != ids.nodes_pid) {
-        cfg.SO_NODES_NUM = *sh.nodes_num;
-        ids.nodes_pid = *sh.new_nodes_pid;
-        shmdt_error_checking(sh.nodes_pid);
-        sh.nodes_pid = shmat(ids.nodes_pid, NULL, 0);
+    struct Messaggio_node msg;
+
+    while (msgrcv(ids.msg_new_node, &msg, sizeof(struct Messaggio_node) - sizeof(long), getpid(), IPC_NOWAIT) != -1) {
+        expand_node();
+
+        /* E aggiungiamo il nodo */
+        nodes_pid[cfg.SO_NODES_NUM - 1] = msg.nodo;
     }
+
+    errno = 0;
 }
 
 #endif

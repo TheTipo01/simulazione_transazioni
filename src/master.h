@@ -8,5 +8,6 @@
 extern Config cfg;
 extern struct SharedMemory sh;
 extern struct SharedMemoryID ids;
+extern struct ProcessoNode *nodes_pid;
 
 #endif

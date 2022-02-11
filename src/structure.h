@@ -44,20 +44,14 @@ struct ProcessoNode {
     /* PID del processo */
     pid_t pid;
 
-    /* Stato del processo. Vedasi process_status */
-    int status;
-
-    /* Bilancio del processo */
-    unsigned int balance;
-
     /* ID della coda di messaggi usata dal processo nodo per ricevere transazioni */
     int msg_id;
+};
 
-    /* Puntatore alla transaction pool */
-    unsigned int last;
+struct PrintNode {
+    pid_t pid;
 
-    /* ID della shared memory in cui è presente l'array degli amici */
-    int friends;
+    int balance;
 };
 
 /* Struttura per tenere lo stato di un processo user */
@@ -109,20 +103,18 @@ struct SharedMemoryID {
     /* ID dell'array di semafori */
     int sem;
 
+    /* Numero di processi nodo avviati */
+    int nodes_num;
+
     /* Coda di messaggi usata per inviare la transazioni indietro al processo master */
-    int master_msg_id;
+    int msg_master;
 
     /* Coda di messaggi usata per ricevere i nuovi nodi amici da aggiungere dai nodi */
     int msg_friends;
 
-    /* ID della shared memory dei nodi. Usata per controllare se abbiamo aggiunto un nodo */
-    int new_nodes_pid;
+    int msg_new_node;
 
-    /* Numero di processi in lettura su nodes_pid */
-    int nodes_pid_read;
-
-    /* Numero di processi nodo avviati */
-    int nodes_num;
+    int msg_tp_remaining;
 };
 
 /* Struttura dati per contenere la memoria condivisa usata nel programma */
@@ -153,15 +145,6 @@ struct SharedMemory {
 
     /* Numero di processi in lettura su stop */
     unsigned int *stop_read;
-
-    /* ID della shared memory dei nodi. Usata per controllare se abbiamo aggiunto un nodo */
-    int *new_nodes_pid;
-
-    /* Numero di processi in lettura su nodes_pid */
-    unsigned int *nodes_pid_read;
-
-    /* Numero di processi nodo avviati */
-    unsigned int *nodes_num;
 };
 
 struct Messaggio_int {
@@ -169,6 +152,21 @@ struct Messaggio_int {
     long m_type;
 
     /* Semplice numero */
+    int n;
+};
+
+struct Messaggio_node {
+    /* Tipo di messaggio (richiesto dalle message queue) */
+    long m_type;
+
+    struct ProcessoNode nodo;
+};
+
+struct Messaggio_tp {
+    /* Tipo di messaggio (richiesto dalle message queue) */
+    long m_type;
+
+    int pid;
     int n;
 };
 

@@ -1,9 +1,9 @@
+#include "master.h"
 #include "config.h"
 #include "enum.h"
 #include "../vendor/libsem.h"
 #include "structure.h"
 #include "utilities.h"
-#include "master.h"
 #include "rwlock.h"
 
 #include <signal.h>
@@ -15,7 +15,7 @@
 int last_block_checked_user = 0, failed_transaction_user = 0;
 unsigned int user_position;
 
-unsigned int calc_entrate(int sem_id, struct Blocco *lm, unsigned int *read_counter) {
+unsigned int calc_entrate() {
     int pid = getpid(), j;
     unsigned int tmp_balance = 0;
 
@@ -23,7 +23,7 @@ unsigned int calc_entrate(int sem_id, struct Blocco *lm, unsigned int *read_coun
      * Dobbiamo eseguire una lettura del libro mastro, quindi impostiamo il
      * semaforo di lettura
      */
-    read_start(sem_id, read_counter, LEDGER_READ, LEDGER_WRITE);
+    read_start(ids.sem, sh.ledger_read, LEDGER_READ, LEDGER_WRITE);
 
     /*
      * Cicliamo all'interno del libro mastro per controllare ogni transazione
@@ -35,14 +35,14 @@ unsigned int calc_entrate(int sem_id, struct Blocco *lm, unsigned int *read_coun
         for (j = 0; j < SO_BLOCK_SIZE; j++) {
             /* Se nella transazione il ricevente è l'utente stesso, allora
              * aggiungiamo al bilancio la quantità della transazione */
-            if (lm[last_block_checked_user].transazioni[j].receiver == pid) {
-                tmp_balance += lm[last_block_checked_user].transazioni[j].quantity;
+            if (sh.ledger[last_block_checked_user].transazioni[j].receiver == pid) {
+                tmp_balance += sh.ledger[last_block_checked_user].transazioni[j].quantity;
             }
         }
     }
 
     /* Rilasciamo il semaforo di lettura a fine operazione */
-    read_end(sem_id, read_counter, LEDGER_READ, LEDGER_WRITE);
+    read_end(ids.sem, sh.ledger_read, LEDGER_READ, LEDGER_WRITE);
 
     return tmp_balance;
 }
@@ -78,7 +78,7 @@ void transaction_generator(int sig) {
         target_node = random() % cfg.SO_NODES_NUM;
     }
     msgsnd(get_node(target_node).msg_id, &msg, msg_size(), 0);
-
+    TEST_ERROR;
 
     sem_reserve(ids.sem, (int) (FINE_SEMAFORI + user_position));
     /* Aggiorniamo il bilancio del nodo rimuovendo la quantità della transazione appena inviata */
@@ -116,6 +116,11 @@ void start_user(unsigned int index) {
      */
     sigwait(&wset, &sig);
 
+    /* E copia dell'array nodes_pid */
+    nodes_pid = malloc(sizeof(struct ProcessoNode) * cfg.SO_NODES_NUM);
+    memcpy(nodes_pid, sh.nodes_pid, sizeof(struct ProcessoNode) * cfg.SO_NODES_NUM);
+    shmdt_error_checking(sh.nodes_pid);
+
     /* Mascheriamo i segnali che usiamo */
     sigprocmask(SIG_SETMASK, &wset, NULL);
 
@@ -131,8 +136,7 @@ void start_user(unsigned int index) {
          * Calcolo del bilancio dell'utente: calcoliamo solo le entrate, in quanto
          * le uscite vengono registrate dopo
          */
-        sh.users_pid[user_position].balance +=
-                calc_entrate(ids.sem, sh.ledger, sh.ledger_read);
+        sh.users_pid[user_position].balance += calc_entrate();
 
         sem_release(ids.sem, (int) (FINE_SEMAFORI + user_position));
 
@@ -180,4 +184,6 @@ void start_user(unsigned int index) {
             sem_release(ids.sem, STOP_WRITE);
         }
     }
+
+    free(nodes_pid);
 }

@@ -65,6 +65,9 @@ char *format_time(time_t rawtime);
  */
 char *get_status(int status);
 
+/* Funzione che calcola il bilancio del nodo leggendo l'ultima transazione di ogni blocco nel ledger */
+int get_node_balance(int pos);
+
 /* Funzione che ritorna un numero casuale in un range definito. */
 long random_between_two(long min, long max);
 

@@ -5,10 +5,11 @@ project(simulazione_transazioni C)
 set(CMAKE_C_STANDARD 90)
 
 set(SOURCES
+        src/master.h
+        src/master.c
         src/user.c
         src/node.c
         src/config.c
-        src/master.c
         src/rwlock.c
         src/shared_memory.c
         src/utilities.c

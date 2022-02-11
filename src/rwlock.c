@@ -35,13 +35,7 @@ int get_stop_value() {
 }
 
 struct ProcessoNode get_node(unsigned int i) {
-    struct ProcessoNode tmp;
-
     check_for_update();
 
-    read_start(ids.sem, sh.nodes_pid_read, NODES_PID_READ, NODES_PID_WRITE);
-    tmp = sh.nodes_pid[i];
-    read_end(ids.sem, sh.nodes_pid_read, NODES_PID_READ, NODES_PID_WRITE);
-
-    return tmp;
+    return nodes_pid[i];
 }

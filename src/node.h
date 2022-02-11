@@ -8,7 +8,7 @@
  * Come parametro è presente il solo puntatore alla sua posizione nell'array dei nodi presente in memoria condivisa,
  * in quanto il resto dei dati che gli servono per eseguire le sue operazioni sono presenti in memoria condivisa.
  */
-void start_node(unsigned int index);
+void start_node(unsigned int index, int id_friends);
 
 /*
  * Funzione incaricata di generare l'ultima transazione di un blocco, quella contente il reward per il nodo che ha
@@ -20,6 +20,6 @@ struct Transazione generate_reward(unsigned int tot_reward);
 void enlarge_friends();
 
 /* Invia le transazioni ad altri  */
-void send_to_others();
+void send_to_others(int last);
 
 #endif
