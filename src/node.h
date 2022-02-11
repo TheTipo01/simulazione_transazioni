@@ -19,4 +19,7 @@ struct Transazione generate_reward(unsigned int tot_reward);
 /* Funzione incaricata di aggiungere un nodo alla lista dei nodi amici */
 void enlarge_friends();
 
+/* Invia le transazioni ad altri  */
+void send_to_others();
+
 #endif

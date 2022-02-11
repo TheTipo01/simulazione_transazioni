@@ -137,12 +137,13 @@ int main(int argc, char *argv[]) {
                 }
             }
 
+            fprintf(stderr, "CALABRIA1\n");
             sem_reserve(ids.sem, NODES_PID_WRITE);
 
             /* Espansione dell'array nodes_pid e aumento del numero di nodi presenti */
             expand_node();
 
-            fprintf(stderr, "CALABRIA\n");
+            fprintf(stderr, "CALABRIA2\n");
 
             /* Creazione del nuovo nodo */
             switch (current_pid = fork()) {
@@ -193,11 +194,19 @@ int main(int argc, char *argv[]) {
      * Se finisce il tempo/tutti i processi utente finiscono/il libro mastro è pieno, terminare la simulazione.
      */
     if (!fork()) {
+        struct msqid_ds info;
+
         /* Blocchiamo anche nel fork i segnali usati dai processi user/node */
         sigprocmask(SIG_SETMASK, &wset, NULL);
 
         do {
             check_for_update();
+            msgctl(ids.master_msg_id, IPC_STAT, &info);
+            fprintf(stdout, "Messaggi nel master: %lu\n", info.msg_qnum);
+
+            msgctl(ids.msg_friends, IPC_STAT, &info);
+            fprintf(stdout, "Messaggi nel friend: %lu\n", info.msg_qnum);
+
             print_more_status(sh.nodes_pid, sh.users_pid);
             exec_time++;
         } while (exec_time < cfg.SO_SIM_SEC && !sleeping(1000000000) && get_stop_value() == -1);

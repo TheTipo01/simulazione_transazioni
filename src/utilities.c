@@ -68,7 +68,6 @@ void print_more_status() {
         }
     }
 
-
     check_for_update();
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         if (sh.nodes_pid[i].status != PROCESS_FINISHED) {
