@@ -22,17 +22,13 @@
 #include <sys/shm.h>
 #include <sys/msg.h>
 
-#define last_index cfg.SO_NODES_NUM - 1
-
 Config cfg;
 struct SharedMemory sh;
 struct SharedMemoryID ids;
 
 int main(int argc, char *argv[]) {
     unsigned int exec_time = 0;
-    int i, j, cont, current_pid, status, *friend, node_to_send;
-    struct Messaggio temp_tran;
-    struct Messaggio_int temp_pid;
+    int i, cont, current_pid, status;
     sigset_t wset;
 
     /* Disattiviamo il buffering di stdout per stampare subito lo stato della simulazione */
@@ -48,28 +44,13 @@ int main(int argc, char *argv[]) {
 
     /* In questo punto del codice solo il processo master può leggere/scrivere sulle shared memory */
     *sh.stop = -1;
-#ifdef trenta
-    *sh.new_nodes_pid = ids.nodes_pid;
-    *sh.nodes_num = cfg.SO_NODES_NUM;
-#endif
 
     /* I semafori usati li usiamo come mutex: inizializziamo i loro valori ad 1 */
     for (i = 0; i < NUM_SEMAFORI; i++) {
         sem_set_val(ids.sem, i, 1);
     }
 
-    ids.users_pid = msgget(IPC_PRIVATE, GET_FLAGS);
-
-#ifdef trenta
-    /*
-     * Inizializziamo la coda di messaggi del processo master, utilizzata per ricevere transazioni dai processi nodo,
-     * che poi dovrà mandare ad altri processi nodo creati da lui stesso.
-     */
-    ids.master_msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
-
-    /* E anche la coda di messaggi usata per inviare i nodi amici nuovi da aggiungere */
-    ids.msg_friends = msgget(IPC_PRIVATE, GET_FLAGS);
-#endif
+    ids.user_msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
@@ -94,14 +75,6 @@ int main(int argc, char *argv[]) {
                 sh.nodes_pid[i].status = PROCESS_WAITING;
                 sh.nodes_pid[i].last = 0;
                 sh.nodes_pid[i].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
-#ifdef trenta
-                sh.nodes_pid[i].friends = shmget(IPC_PRIVATE, sizeof(int) * cfg.SO_NUM_FRIENDS, GET_FLAGS);
-                friend = shmat(sh.nodes_pid[i].friends, NULL, 0);
-                for (j = 0; j < cfg.SO_NUM_FRIENDS; j++) {
-                    friend[j] = (int) (random() % cfg.SO_NODES_NUM);
-                }
-                shmdt_error_checking(friend);
-#endif
         }
     }
 
@@ -124,72 +97,6 @@ int main(int argc, char *argv[]) {
     /* Notifichiamo i processi che gli array dei n sono stati popolati */
     kill(0, SIGUSR1);
 
-#ifdef trenta
-    if (!fork()) {
-        /* Blocchiamo anche nel fork i segnali usati dai processi user/node */
-        sigprocmask(SIG_SETMASK, &wset, NULL);
-
-        while (get_stop_value() == -1) {
-            /* Ricezione della transazione che ha fatto SO_HOPS salti */
-            msgrcv(ids.master_msg_id, &temp_tran, msg_size(), 1, 0);
-            if (errno) {
-                if (get_stop_value() != -1) {
-                    exit(EXIT_SUCCESS);
-                } else {
-                    fprintf(stderr, "%s:%d: PID=%5d: Error %d (%s)\n", __FILE__, __LINE__, getpid(), errno,
-                            strerror(errno));
-                }
-            }
-
-            sem_reserve(ids.sem, NODES_PID_WRITE);
-
-            /* Espansione dell'array nodes_pid e aumento del numero di nodi presenti */
-            expand_node();
-
-            /* Creazione del nuovo nodo */
-            switch (current_pid = fork()) {
-                case -1:
-                    fprintf(stderr, "Error forking\n");
-                    exit(EXIT_FAILURE);
-                case 0:
-                    start_node(last_index);
-                    exit(EXIT_SUCCESS);
-                default:
-                    sh.nodes_pid[last_index].pid = current_pid;
-                    sh.nodes_pid[last_index].balance = 0;
-                    sh.nodes_pid[last_index].status = PROCESS_WAITING;
-                    sh.nodes_pid[last_index].last = 0;
-                    sh.nodes_pid[last_index].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
-                    sh.nodes_pid[last_index].friends = shmget(IPC_PRIVATE,
-                                                              sizeof(int) * cfg.SO_NUM_FRIENDS, GET_FLAGS);
-                    sem_release(ids.sem, NODES_PID_WRITE);
-
-                    friend = shmat(get_node(last_index).friends, NULL, 0);
-
-                    temp_pid.n = (int) last_index;
-
-                    for (j = 0; j < cfg.SO_NUM_FRIENDS; j++) {
-                        /* Popolazione della lista amici del nuovo nodo */
-                        friend[j] = (int) (random() % cfg.SO_NODES_NUM);
-
-                        node_to_send = (int) (random() % cfg.SO_NODES_NUM);
-                        temp_pid.m_type = get_node(node_to_send).pid;
-
-                        /* Selezionamento di SO_NUM_FRIENDS nodi a cui deve essere aggiunto il nuovo nodo nella lista amici */
-                        msgsnd(ids.msg_friends, &temp_pid, sizeof(struct Messaggio_int) - sizeof(long), 0);
-                        TEST_ERROR;
-                    }
-
-                    shmdt_error_checking(friend);
-                    msgsnd(get_node(temp_pid.n).msg_id, &temp_tran, msg_size(), 0);
-                    kill(current_pid, SIGUSR1);
-                    TEST_ERROR;
-            }
-        }
-        exit(EXIT_SUCCESS);
-    }
-#endif
-
     /*
      * Tempo di esecuzione della simulazione = SO_SIM_SEC.
      * Usiamo un altra fork per generare un processo che tenga conto del tempo di esecuzione e stampi a schermo i dati.
@@ -200,9 +107,6 @@ int main(int argc, char *argv[]) {
         sigprocmask(SIG_SETMASK, &wset, NULL);
 
         do {
-#ifdef trenta
-            check_for_update();
-#endif
             print_more_status(sh.nodes_pid, sh.users_pid);
             exec_time++;
         } while (exec_time < cfg.SO_SIM_SEC && !sleeping(1000000000) && get_stop_value() == -1);
@@ -222,9 +126,6 @@ int main(int argc, char *argv[]) {
     /* Aspettiamo che i processi finiscano */
     for (i = 0; i < cfg.SO_NODES_NUM + cfg.SO_USERS_NUM; i++) {
         waitpid(-1, &status, 0);
-#ifdef trenta
-        check_for_update();
-#endif
     }
 
     /*

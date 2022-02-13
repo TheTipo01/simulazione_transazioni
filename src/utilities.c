@@ -4,10 +4,8 @@
 #include "utilities.h"
 #include "master.h"
 #include "enum.h"
-#include "shared_memory.h"
 
 #include <stdio.h>
-#include <sys/shm.h>
 #include <errno.h>
 #include <time.h>
 #include <stdlib.h>
@@ -68,9 +66,6 @@ void print_more_status() {
         }
     }
 
-#ifdef trenta
-    check_for_update();
-#endif
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         if (sh.nodes_pid[i].status != PROCESS_FINISHED) {
             active_nodes++;
@@ -105,9 +100,6 @@ void print_more_status() {
         }
     }
 
-#ifdef trenta
-    check_for_update();
-#endif
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         if (sh.nodes_pid[i].balance > t3_nodes[0].balance) {
             temp_node = t3_nodes[1];
@@ -182,40 +174,4 @@ long random_between_two(long min, long max) {
     return random() % (max - min + 1) + min;
 }
 
-#ifdef trenta
-void expand_node() {
-    struct ProcessoNode *new;
-    int i;
-
-    /* Creazione e copia del vecchio segmento nel nuovo più grande */
-    *sh.new_nodes_pid = shmget(IPC_PRIVATE, (cfg.SO_NODES_NUM + 1) * sizeof(struct ProcessoNode), GET_FLAGS);
-    new = shmat(*sh.new_nodes_pid, NULL, 0);
-
-    for (i = 0; i < cfg.SO_NODES_NUM; i++) {
-        new[i] = sh.nodes_pid[i];
-    }
-
-    /* Detach ed eliminazione del vecchio segmento */
-    shmdt_error_checking(new);
-    shmdt_error_checking(sh.nodes_pid);
-    shmctl(ids.nodes_pid, IPC_RMID, NULL);
-
-    /* Attach del nuovo segmento */
-    sh.nodes_pid = shmat(*sh.new_nodes_pid, NULL, 0);
-    ids.nodes_pid = *sh.new_nodes_pid;
-
-    /* Incremento del numero di nodi avviati */
-    cfg.SO_NODES_NUM++;
-    *sh.nodes_num = cfg.SO_NODES_NUM;
-}
-
-void check_for_update() {
-    if (*sh.new_nodes_pid != ids.nodes_pid) {
-        cfg.SO_NODES_NUM = *sh.nodes_num;
-        ids.nodes_pid = *sh.new_nodes_pid;
-        shmdt_error_checking(sh.nodes_pid);
-        sh.nodes_pid = shmat(ids.nodes_pid, NULL, 0);
-    }
-}
-#endif
 #endif

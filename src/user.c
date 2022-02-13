@@ -56,9 +56,6 @@ void transaction_generator(int sig) {
      * si accede col puntatore ottenuto)
      */
     receiver = random() % cfg.SO_USERS_NUM;
-#ifdef trenta
-    check_for_update();
-#endif
     target_node = random() % cfg.SO_NODES_NUM;
 
     /* Generazione della transazione */
@@ -73,9 +70,6 @@ void transaction_generator(int sig) {
     msg.transazione.quantity = random_between_two(2, sh.users_pid[user_position].balance);
 
     msg.m_type = 1;
-#ifdef trenta
-    msg.hops = 0;
-#endif
 
     /* Invio al nodo la transazione */
     while (get_node(target_node).msg_id == -1) {
@@ -104,7 +98,7 @@ void transaction_generator(int sig) {
 }
 
 void start_user(unsigned int index) {
-    int sig, j, k = 0, prev = 0;
+    int sig, j, k = 0, prev;
     sigset_t wset;
 
     /* Seeding di rand con il n del processo */

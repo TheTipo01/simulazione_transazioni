@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 #ifndef STRUCTURE_H
 #define STRUCTURE_H
 
@@ -34,11 +33,6 @@ struct Messaggio {
 
     /* Transazione da inviare */
     struct Transazione transazione;
-
-#ifdef trenta
-    /* Numero di salti effettuati dalla transazione */
-    int hops;
-#endif
 };
 
 /* Struttura per tenere lo stato di un processo nodo */
@@ -57,11 +51,6 @@ struct ProcessoNode {
 
     /* Puntatore alla transaction pool */
     unsigned int last;
-
-#ifdef trenta
-    /* ID della shared memory in cui è presente l'array degli amici */
-    int friends;
-#endif
 };
 
 /* Struttura per tenere lo stato di un processo user */
@@ -113,25 +102,8 @@ struct SharedMemoryID {
     /* ID dell'array di semafori */
     int sem;
 
-    /* */
+    /* Coda di messaggi usata per dare feedback agli utenti */
     int user_msg_id;
-
-#ifdef trenta
-    /* Coda di messaggi usata per inviare la transazioni indietro al processo master */
-    int master_msg_id;
-
-    /* Coda di messaggi usata per ricevere i nuovi nodi amici da aggiungere dai nodi */
-    int msg_friends;
-
-    /* ID della shared memory dei nodi. Usata per controllare se abbiamo aggiunto un nodo */
-    int new_nodes_pid;
-
-    /* Numero di processi in lettura su nodes_pid */
-    int nodes_pid_read;
-
-    /* Numero di processi nodo avviati */
-    int nodes_num;
-#endif
 };
 
 /* Struttura dati per contenere la memoria condivisa usata nel programma */
@@ -162,25 +134,6 @@ struct SharedMemory {
 
     /* Numero di processi in lettura su stop */
     unsigned int *stop_read;
-
-#ifdef trenta
-    /* ID della shared memory dei nodi. Usata per controllare se abbiamo aggiunto un nodo */
-    int *new_nodes_pid;
-
-    /* Numero di processi in lettura su nodes_pid */
-    unsigned int *nodes_pid_read;
-
-    /* Numero di processi nodo avviati */
-    unsigned int *nodes_num;
-#endif
-};
-
-struct Messaggio_int {
-    /* Tipo di messaggio (richiesto dalle message queue) */
-    long m_type;
-
-    /* Semplice numero */
-    int n;
 };
 
 #endif

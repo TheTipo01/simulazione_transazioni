@@ -2,7 +2,6 @@
 #include "enum.h"
 #include "master.h"
 #include "structure.h"
-#include "utilities.h"
 
 void read_start(int sem_id, unsigned int *read_counter, int read, int write) {
     sem_reserve(sem_id, read);
@@ -34,18 +33,6 @@ int get_stop_value() {
     return tmp;
 }
 
-
 struct ProcessoNode get_node(unsigned int i) {
-#ifdef trenta
-    struct ProcessoNode tmp;
-
-    check_for_update();
-
-    read_start(ids.sem, sh.nodes_pid_read, NODES_PID_READ, NODES_PID_WRITE);
-    tmp = sh.nodes_pid[i];
-    read_end(ids.sem, sh.nodes_pid_read, NODES_PID_READ, NODES_PID_WRITE);
-
-    return tmp;
-#endif
     return sh.nodes_pid[i];
 }
