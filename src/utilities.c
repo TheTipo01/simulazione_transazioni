@@ -68,7 +68,9 @@ void print_more_status() {
         }
     }
 
+#ifdef trenta
     check_for_update();
+#endif
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         if (sh.nodes_pid[i].status != PROCESS_FINISHED) {
             active_nodes++;
@@ -103,7 +105,9 @@ void print_more_status() {
         }
     }
 
+#ifdef trenta
     check_for_update();
+#endif
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         if (sh.nodes_pid[i].balance > t3_nodes[0].balance) {
             temp_node = t3_nodes[1];
@@ -178,6 +182,7 @@ long random_between_two(long min, long max) {
     return random() % (max - min + 1) + min;
 }
 
+#ifdef trenta
 void expand_node() {
     struct ProcessoNode *new;
     int i;
@@ -212,5 +217,5 @@ void check_for_update() {
         sh.nodes_pid = shmat(ids.nodes_pid, NULL, 0);
     }
 }
-
+#endif
 #endif

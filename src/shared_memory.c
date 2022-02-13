@@ -34,6 +34,7 @@ void get_shared_ids() {
     ids.mmts_free_block = shmget(IPC_PRIVATE, sizeof(int), GET_FLAGS);
     shmget_error_checking(ids.mmts_free_block);
 
+#ifdef trenta
     ids.new_nodes_pid = shmget(IPC_PRIVATE, sizeof(int), GET_FLAGS);
     shmget_error_checking(ids.new_nodes_pid);
 
@@ -42,6 +43,7 @@ void get_shared_ids() {
 
     ids.nodes_num = shmget(IPC_PRIVATE, sizeof(unsigned int), GET_FLAGS);
     shmget_error_checking(ids.nodes_num);
+#endif
 
     ids.sem = semget(IPC_PRIVATE, NUM_SEMAFORI, GET_FLAGS);
     TEST_ERROR;
@@ -72,6 +74,7 @@ void attach_shared_memory() {
     sh.mmts = shmat(ids.mmts, NULL, 0);
     TEST_ERROR;
 
+#ifdef trenta
     sh.new_nodes_pid = shmat(ids.new_nodes_pid, NULL, 0);
     TEST_ERROR;
 
@@ -80,6 +83,7 @@ void attach_shared_memory() {
 
     sh.nodes_num = shmat(ids.nodes_num, NULL, 0);
     TEST_ERROR;
+#endif
 }
 
 void delete_shared_memory() {
@@ -93,22 +97,31 @@ void delete_shared_memory() {
     shmctl(ids.stop_read, IPC_RMID, NULL);
     shmctl(ids.mmts, IPC_RMID, NULL);
     shmctl(ids.mmts_free_block, IPC_RMID, NULL);
+#ifdef trenta
     shmctl(ids.new_nodes_pid, IPC_RMID, NULL);
     shmctl(ids.nodes_pid_read, IPC_RMID, NULL);
     shmctl(ids.nodes_num, IPC_RMID, NULL);
+#endif
 }
 
 void delete_message_queue() {
     int i;
 
+#ifdef trenta
     check_for_update();
+#endif
 
     /* Code di messaggi dei processi nodo */
     for (i = 0; i < cfg.SO_NODES_NUM; i++) {
         msgctl(sh.nodes_pid[i].msg_id, IPC_RMID, NULL);
     }
 
+    msgctl(ids.user_msg_id, IPC_RMID, NULL);
+
+#ifdef trenta
     /* Le due code usate dal processo per avviare i nodi e comunicare gli amici da aggiungere */
     msgctl(ids.master_msg_id, IPC_RMID, NULL);
     msgctl(ids.msg_friends, IPC_RMID, NULL);
+#endif
+
 }

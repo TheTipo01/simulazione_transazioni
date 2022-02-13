@@ -34,7 +34,9 @@ int get_stop_value() {
     return tmp;
 }
 
+
 struct ProcessoNode get_node(unsigned int i) {
+#ifdef trenta
     struct ProcessoNode tmp;
 
     check_for_update();
@@ -44,4 +46,6 @@ struct ProcessoNode get_node(unsigned int i) {
     read_end(ids.sem, sh.nodes_pid_read, NODES_PID_READ, NODES_PID_WRITE);
 
     return tmp;
+#endif
+    return sh.nodes_pid[i];
 }

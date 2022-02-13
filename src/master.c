@@ -23,11 +23,6 @@
 #include <sys/msg.h>
 
 #define last_index cfg.SO_NODES_NUM - 1
-/*
- * master: crea SO_USERS_NUM processi utente, gestisce simulazione
- * user: fa transaction
- * node: elabora transaction e riceve reward
- */
 
 Config cfg;
 struct SharedMemory sh;
@@ -53,14 +48,19 @@ int main(int argc, char *argv[]) {
 
     /* In questo punto del codice solo il processo master può leggere/scrivere sulle shared memory */
     *sh.stop = -1;
+#ifdef trenta
     *sh.new_nodes_pid = ids.nodes_pid;
     *sh.nodes_num = cfg.SO_NODES_NUM;
+#endif
 
     /* I semafori usati li usiamo come mutex: inizializziamo i loro valori ad 1 */
     for (i = 0; i < NUM_SEMAFORI; i++) {
         sem_set_val(ids.sem, i, 1);
     }
 
+    ids.users_pid = msgget(IPC_PRIVATE, GET_FLAGS);
+
+#ifdef trenta
     /*
      * Inizializziamo la coda di messaggi del processo master, utilizzata per ricevere transazioni dai processi nodo,
      * che poi dovrà mandare ad altri processi nodo creati da lui stesso.
@@ -69,6 +69,7 @@ int main(int argc, char *argv[]) {
 
     /* E anche la coda di messaggi usata per inviare i nodi amici nuovi da aggiungere */
     ids.msg_friends = msgget(IPC_PRIVATE, GET_FLAGS);
+#endif
 
     /* Creiamo un set in cui mettiamo il segnale che usiamo per far aspettare i processi */
     sigemptyset(&wset);
@@ -93,12 +94,14 @@ int main(int argc, char *argv[]) {
                 sh.nodes_pid[i].status = PROCESS_WAITING;
                 sh.nodes_pid[i].last = 0;
                 sh.nodes_pid[i].msg_id = msgget(IPC_PRIVATE, GET_FLAGS);
+#ifdef trenta
                 sh.nodes_pid[i].friends = shmget(IPC_PRIVATE, sizeof(int) * cfg.SO_NUM_FRIENDS, GET_FLAGS);
                 friend = shmat(sh.nodes_pid[i].friends, NULL, 0);
                 for (j = 0; j < cfg.SO_NUM_FRIENDS; j++) {
                     friend[j] = (int) (random() % cfg.SO_NODES_NUM);
                 }
                 shmdt_error_checking(friend);
+#endif
         }
     }
 
@@ -121,6 +124,7 @@ int main(int argc, char *argv[]) {
     /* Notifichiamo i processi che gli array dei n sono stati popolati */
     kill(0, SIGUSR1);
 
+#ifdef trenta
     if (!fork()) {
         /* Blocchiamo anche nel fork i segnali usati dai processi user/node */
         sigprocmask(SIG_SETMASK, &wset, NULL);
@@ -137,13 +141,10 @@ int main(int argc, char *argv[]) {
                 }
             }
 
-            fprintf(stderr, "CALABRIA1\n");
             sem_reserve(ids.sem, NODES_PID_WRITE);
 
             /* Espansione dell'array nodes_pid e aumento del numero di nodi presenti */
             expand_node();
-
-            fprintf(stderr, "CALABRIA2\n");
 
             /* Creazione del nuovo nodo */
             switch (current_pid = fork()) {
@@ -187,6 +188,7 @@ int main(int argc, char *argv[]) {
         }
         exit(EXIT_SUCCESS);
     }
+#endif
 
     /*
      * Tempo di esecuzione della simulazione = SO_SIM_SEC.
@@ -194,19 +196,13 @@ int main(int argc, char *argv[]) {
      * Se finisce il tempo/tutti i processi utente finiscono/il libro mastro è pieno, terminare la simulazione.
      */
     if (!fork()) {
-        struct msqid_ds info;
-
         /* Blocchiamo anche nel fork i segnali usati dai processi user/node */
         sigprocmask(SIG_SETMASK, &wset, NULL);
 
         do {
+#ifdef trenta
             check_for_update();
-            msgctl(ids.master_msg_id, IPC_STAT, &info);
-            fprintf(stdout, "Messaggi nel master: %lu\n", info.msg_qnum);
-
-            msgctl(ids.msg_friends, IPC_STAT, &info);
-            fprintf(stdout, "Messaggi nel friend: %lu\n", info.msg_qnum);
-
+#endif
             print_more_status(sh.nodes_pid, sh.users_pid);
             exec_time++;
         } while (exec_time < cfg.SO_SIM_SEC && !sleeping(1000000000) && get_stop_value() == -1);
@@ -226,7 +222,9 @@ int main(int argc, char *argv[]) {
     /* Aspettiamo che i processi finiscano */
     for (i = 0; i < cfg.SO_NODES_NUM + cfg.SO_USERS_NUM; i++) {
         waitpid(-1, &status, 0);
+#ifdef trenta
         check_for_update();
+#endif
     }
 
     /*

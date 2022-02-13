@@ -15,7 +15,7 @@
 int last_block_checked_user = 0, failed_transaction_user = 0;
 unsigned int user_position;
 
-unsigned int calc_entrate(int sem_id, struct Blocco *lm, unsigned int *read_counter) {
+unsigned int calc_entrate() {
     int pid = getpid(), j;
     unsigned int tmp_balance = 0;
 
@@ -23,7 +23,7 @@ unsigned int calc_entrate(int sem_id, struct Blocco *lm, unsigned int *read_coun
      * Dobbiamo eseguire una lettura del libro mastro, quindi impostiamo il
      * semaforo di lettura
      */
-    read_start(sem_id, read_counter, LEDGER_READ, LEDGER_WRITE);
+    read_start(ids.sem, sh.ledger_read, LEDGER_READ, LEDGER_WRITE);
 
     /*
      * Cicliamo all'interno del libro mastro per controllare ogni transazione
@@ -35,14 +35,14 @@ unsigned int calc_entrate(int sem_id, struct Blocco *lm, unsigned int *read_coun
         for (j = 0; j < SO_BLOCK_SIZE; j++) {
             /* Se nella transazione il ricevente è l'utente stesso, allora
              * aggiungiamo al bilancio la quantità della transazione */
-            if (lm[last_block_checked_user].transazioni[j].receiver == pid) {
-                tmp_balance += lm[last_block_checked_user].transazioni[j].quantity;
+            if (sh.ledger[last_block_checked_user].transazioni[j].receiver == pid) {
+                tmp_balance += sh.ledger[last_block_checked_user].transazioni[j].quantity;
             }
         }
     }
 
     /* Rilasciamo il semaforo di lettura a fine operazione */
-    read_end(sem_id, read_counter, LEDGER_READ, LEDGER_WRITE);
+    read_end(ids.sem, sh.ledger_read, LEDGER_READ, LEDGER_WRITE);
 
     return tmp_balance;
 }
@@ -56,7 +56,9 @@ void transaction_generator(int sig) {
      * si accede col puntatore ottenuto)
      */
     receiver = random() % cfg.SO_USERS_NUM;
+#ifdef trenta
     check_for_update();
+#endif
     target_node = random() % cfg.SO_NODES_NUM;
 
     /* Generazione della transazione */
@@ -71,7 +73,9 @@ void transaction_generator(int sig) {
     msg.transazione.quantity = random_between_two(2, sh.users_pid[user_position].balance);
 
     msg.m_type = 1;
+#ifdef trenta
     msg.hops = 0;
+#endif
 
     /* Invio al nodo la transazione */
     while (get_node(target_node).msg_id == -1) {
@@ -79,25 +83,28 @@ void transaction_generator(int sig) {
     }
     msgsnd(get_node(target_node).msg_id, &msg, msg_size(), 0);
 
+    if (msgrcv(ids.user_msg_id, &msg, msg_size(), sh.users_pid[user_position].pid, IPC_NOWAIT) != -1) {
+        failed_transaction_user++;
+    } else {
+        sem_reserve(ids.sem, (int) (FINE_SEMAFORI + user_position));
+        /* Aggiorniamo il bilancio del nodo rimuovendo la quantità della transazione appena inviata */
+        sh.users_pid[user_position].balance -=
+                (unsigned int) (msg.transazione.quantity * ((float) (100 - msg.transazione.reward) / 100.0));
 
-    sem_reserve(ids.sem, (int) (FINE_SEMAFORI + user_position));
-    /* Aggiorniamo il bilancio del nodo rimuovendo la quantità della transazione appena inviata */
-    sh.users_pid[user_position].balance -=
-            (unsigned int) (msg.transazione.quantity * ((float) (100 - msg.transazione.reward) / 100.0));
-
-    /* Se il segnale ricevuto è SIGUSR2, significa che questa funzione è stata chiamata inviando un segnale ad un processo utente */
-    if (sig == SIGUSR2) {
-        fprintf(stderr, "AO\n");
-        sem_reserve(ids.sem, MMTS);
-        sh.mmts[*sh.mmts_free_block] = msg.transazione;
-        *sh.mmts_free_block += 1;
-        sem_release(ids.sem, MMTS);
+        /* Se il segnale ricevuto è SIGUSR2, significa che questa funzione è stata chiamata inviando un segnale ad un processo utente */
+        if (sig == SIGUSR2) {
+            fprintf(stderr, "AO\n");
+            sem_reserve(ids.sem, MMTS);
+            sh.mmts[*sh.mmts_free_block] = msg.transazione;
+            *sh.mmts_free_block += 1;
+            sem_release(ids.sem, MMTS);
+        }
+        sem_release(ids.sem, (int) (FINE_SEMAFORI + user_position));
     }
-    sem_release(ids.sem, (int) (FINE_SEMAFORI + user_position));
 }
 
 void start_user(unsigned int index) {
-    int sig, j, k = 0;
+    int sig, j, k = 0, prev = 0;
     sigset_t wset;
 
     /* Seeding di rand con il n del processo */
@@ -131,18 +138,21 @@ void start_user(unsigned int index) {
          * Calcolo del bilancio dell'utente: calcoliamo solo le entrate, in quanto
          * le uscite vengono registrate dopo
          */
-        sh.users_pid[user_position].balance +=
-                calc_entrate(ids.sem, sh.ledger, sh.ledger_read);
+        sh.users_pid[user_position].balance += calc_entrate();
 
         sem_release(ids.sem, (int) (FINE_SEMAFORI + user_position));
 
         /* Se l'utente ha un bilancio abbastanza alto... */
         if (sh.users_pid[user_position].balance >= 2) {
+            prev = failed_transaction_user;
+
             /* ...viene generata la transazione. */
             transaction_generator(0);
 
-            /* Dato che l'utente ha inviato la transazione, il contatore delle transazioni fallite consecutive si azzera */
-            failed_transaction_user = 0;
+            /* Se l'utente ha inviato la transazione, il contatore delle transazioni fallite consecutive si azzera */
+            if (prev == failed_transaction_user) {
+                failed_transaction_user = 0;
+            }
         } else {
             /* Altrimenti, significa che la transazione è fallita */
             failed_transaction_user++;

@@ -71,10 +71,12 @@ long random_between_two(long min, long max);
 /* Funzione delegata di allargare l'array sh.nodes_pid */
 void expand_node();
 
+#ifdef trenta
 /*
  * Funzione che controlla se bisogna eseguire il reattach della shared mem, solitamente accade dopo che viene creato un
  * nuovo nodo (l'array nodes_pid in memoria condivisa viene espanso)
  */
 void check_for_update();
+#endif
 
 #endif

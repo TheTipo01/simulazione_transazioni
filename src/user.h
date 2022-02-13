@@ -10,7 +10,7 @@
  * funzione ritorna quindi il valore trovato, che viene poi aggiunto al bilancio totale dell'utente. È presente un semaforo
  * che permette al processo stesso e agli altri processi di leggere ma non di scrivere, in modo di evitare inconsistenze.
  */
-double calc_entrate(int sem_id, struct Blocco *lm, unsigned int *read_counter);
+double calc_entrate();
 
 /*
  * Funzione principale del processo utente, responsabile del suo funzionamento.
