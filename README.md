@@ -67,8 +67,7 @@ mastro
 `ledger`. Similmente al processo [User](#user), [Node](#node) usufruisce di `[Node](#node)s_pid` per prelevare
 informazioni sul nodo d'interesse anch'esso tramite un indice `[Node](#node)_position` fornito dal [Master](#master)
 all'avvio. Tramite esso, è possibile conoscere il bilancio del nodo (calcolato sul reward di ogni transazione), il suo
-PID, il suo stato, l'ID della sua message queue, il numero di transazioni presenti nella sua transaction pool, e il
-puntatore all'array dei `friends` presente in memoria condivisa.
+PID, il suo stato, l'ID della sua message queue e numero di transazioni presenti nella sua transaction pool.
 
 Il [Node](#node), diversamente dai processi [User](#user), termina soltanto quando il flag `stop` viene sollevato,
 ovvero quando tutti gli utenti sono terminati.
