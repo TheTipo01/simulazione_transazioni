@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #ifndef STRUCTURE_H
 #define STRUCTURE_H
 

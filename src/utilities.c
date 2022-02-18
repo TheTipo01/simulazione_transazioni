@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #ifndef UTILITIES_C
 #define UTILITIES_C
 
